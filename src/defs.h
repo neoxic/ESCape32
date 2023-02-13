@@ -42,3 +42,66 @@
 #define COMP_IN2 1
 #define COMP_IN3 3
 #endif
+
+#ifndef SENS_MAP
+#define SENS_MAP 0
+#define SENS_CNT 0
+#define SENS_CHAN 0
+#endif
+
+#ifdef LED_WS2812
+#define LED_CNT 3
+#elif !defined LED_MAP
+#define LED_CNT 0
+#elif LED_MAP == 0xA15B3B4
+#define LED_CNT 3
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT B
+#define LED3_PIN 4
+#elif LED_MAP == 0xA15B5B3
+#define LED_CNT 3
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP == 0xB5B3A15
+#define LED_CNT 3
+#define LED1_PORT B
+#define LED1_PIN 5
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT A
+#define LED3_PIN 15
+#elif LED_MAP == 0xB8B5B3
+#define LED_CNT 3
+#define LED1_PORT B
+#define LED1_PIN 8
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#endif
+
+#ifdef LED_INV
+#define LED1_INV
+#define LED2_INV
+#define LED3_INV
+#endif
+
+#ifndef TEMP_MAX
+#define TEMP_MAX 0 // C
+#endif
+#ifndef VOLT_MUL
+#define VOLT_MUL 0 // %/10
+#endif
+#ifndef CURR_MUL
+#define CURR_MUL 0 // mA/mV
+#endif
+#ifndef CURR_MAX
+#define CURR_MAX 0 // A
+#endif

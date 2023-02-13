@@ -1,9 +1,9 @@
-# Tweaks for '.ramtext' sections
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
-add_link_options(-Wl,--no-warn-rwx-segments)
+add_target(BOOT1_PA2 STM32F0 IO_PA2)
+add_target(BOOT1_PB4 STM32F0)
+add_target(BOOT2_PA6 STM32G0 IO_PA6)
+add_target(BOOT2_PB4 STM32G0)
+add_target(BOOT3_PA2 STM32F0 IO_PA2 USARTv1)
 
-add_target(STM32F0  BOOT_F0_PA2  IO_PA2)
-add_target(STM32F0  BOOT_F0_PA6  IO_PA6)
-add_target(STM32F0  BOOT_F0_PB4)
-add_target(STM32G0  BOOT_G0_PA6  IO_PA6)
-add_target(STM32G0  BOOT_G0_PB4)
+# Experimental targets
+add_target(_BOOT1_PA6 STM32F0 IO_PA6)
+add_target(_BOOT2_PA2 STM32G0 IO_PA2)

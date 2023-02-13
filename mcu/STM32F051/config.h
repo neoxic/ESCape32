@@ -17,26 +17,41 @@
 
 #pragma once
 
-#define PCLK1 48000000
-#define PCLK2 48000000
+#if SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
+#define SENS_CNT 2
+#define SENS_CHAN 0x48
+#define SENS_SWAP
+#elif SENS_MAP == 0xA3 // A3 (volt)
+#define SENS_CNT 1
+#define SENS_CHAN 0x8
+#elif SENS_MAP == 0xA6 // A6 (volt)
+#define SENS_CNT 1
+#define SENS_CHAN 0x40
+#endif
+
+#define CLK 48000000
+
+#define IFTIM TIM2
+#define IFTIM_ICF 64
+#define IFTIM_ICE TIM_DIER_CC4IE
+#define IFTIM_ICR TIM2_CCR4
+#define IFTIM_OCR TIM2_CCR1
+#define iftim_isr tim2_isr
 
 #ifdef IO_PA2
-#define TARGET_TYPE 2
+#define IO_TYPE 0
 #define IOTIM TIM15
-#define IOTIM_CLK PCLK2
-#define IOTIM_IDR GPIOA_IDR
-#define IOTIM_PIN 0x04 // A2
+#define IOTIM_IDR (GPIOA_IDR & 0x4) // A2
 #define IOTIM_DMA 5
 #define iotim_isr tim15_isr
 #else
-#define TARGET_TYPE 1
+#define IO_TYPE 2
 #define IOTIM TIM3
-#define IOTIM_CLK PCLK1
-#define IOTIM_IDR GPIOB_IDR
-#define IOTIM_PIN 0x10 // B4
+#define IOTIM_IDR (GPIOB_IDR & 0x10) // B4
 #define IOTIM_DMA 4
 #define iotim_isr tim3_isr
 #endif
+#define iodma_isr dma1_channel4_7_dma2_channel3_5_isr
 
 #define USART1_TX_DMA 2
 #define USART1_RX_DMA 3
@@ -44,7 +59,4 @@
 
 #define USART2_RX_DMA 5
 
-void tim1_up_isr(void);
 void tim1_com_isr(void);
-void iotim_dma_isr(void);
-void usart2_dma_isr(void);

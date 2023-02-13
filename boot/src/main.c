@@ -17,13 +17,14 @@
 
 #include "common.h"
 
-#define REVISION 1
+#define REVISION 2
 
 #define CMD_PROBE  0
 #define CMD_INFO   1
 #define CMD_READ   2
 #define CMD_WRITE  3
 #define CMD_UPDATE 4
+#define CMD_SETWRP 5
 
 #define RES_OK    0
 #define RES_ERROR 1
@@ -31,7 +32,7 @@
 void main(void) {
 	init();
 	initio();
-	if (RCC_CSR & RCC_CSR_SFTRSTF) { // Software reset
+	if (RCC_CSR & (RCC_CSR_SFTRSTF | RCC_CSR_OBLRSTF)) { // Reboot
 		RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
 		sendval(RES_OK); // ACK after reboot
 	}
@@ -47,19 +48,19 @@ void main(void) {
 			}
 			case CMD_READ: { // Read block
 				int num = recvval();
-				if (num == -1) break;
+				if (num == -1) goto error;
 				int cnt = recvval();
-				if (cnt == -1) break;
+				if (cnt == -1) goto error;
 				senddata(_rom_end + (num << 10), (cnt + 1) << 2);
 				break;
 			}
 			case CMD_WRITE: { // Write block
 				int num = recvval();
-				if (num == -1) break;
+				if (num == -1) goto error;
 				char buf[1024];
 				int len = recvdata(buf);
-				if (len == -1) break;
-				sendval(writeflash(_rom_end + (num << 10), buf, len) ? RES_OK : RES_ERROR);
+				if (len == -1) goto error;
+				sendval(write(_rom_end + (num << 10), buf, len) ? RES_OK : RES_ERROR);
 				break;
 			}
 			case CMD_UPDATE: { // Update bootloader
@@ -67,15 +68,31 @@ void main(void) {
 				int pos = 0;
 				for (int i = 0, n = (_rom_end - _rom) >> 10; i < n; ++i) {
 					int len = recvdata(buf + pos);
-					if (len == -1) break;
+					if (len == -1) goto error;
 					sendval(RES_OK);
 					pos += len;
 					if (len < 1024) break; // Last block
 				}
-				updateflash(_rom, buf, pos); // Update and reboot
+				update(_rom, buf, pos);
+				sendval(RES_ERROR);
 				break;
 			}
+			case CMD_SETWRP: // Set write protection
+				switch (recvval()) {
+					case 0x33: // Off
+						setwrp(0);
+						break;
+					case 0x44: // Bootloader
+						setwrp(1);
+						break;
+					case 0x55: // Full
+						setwrp(2);
+						break;
+				}
+				sendval(RES_ERROR);
+				break;
 			default: // Pass control to application
+			error:
 				if (*(uint16_t *)_rom_end != 0x32ea) break;
 				__asm__("msr msp, %0" :: "g" (*(uint32_t *)(_rom_end + PAGE_SIZE))); // Initialize stack pointer
 				(*(void (**)(void))(_rom_end + PAGE_SIZE + 4))(); // Jump to application

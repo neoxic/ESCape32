@@ -17,13 +17,10 @@
 
 #pragma once
 
-#define PCLK1 48000000
+#define CLK 48000000
 #define PAGE_SIZE 1024
-
 #ifdef IO_PA6
-#define TIM3_IDR GPIOA_IDR
-#define TIM3_PIN 0x40 // A6
+#define TIM3_IDR (GPIOA_IDR & 0x40) // A6
 #else
-#define TIM3_IDR GPIOB_IDR
-#define TIM3_PIN 0x10 // B4
+#define TIM3_IDR (GPIOB_IDR & 0x10) // B4
 #endif

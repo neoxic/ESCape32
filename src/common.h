@@ -19,15 +19,17 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <libopencm3/cm3/scb.h>
-#include <libopencm3/cm3/nvic.h>
-#include <libopencm3/cm3/systick.h>
-#include <libopencm3/cm3/cortex.h>
+#include <libopencmsis/core_cm3.h>
+#include <libopencm3/stm32/syscfg.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
+#ifdef USARTv1
+#include <libopencm3/cm3/common.h>
+#include <libopencm3/stm32/f1/usart.h>
+#else
 #include <libopencm3/stm32/usart.h>
-#include <libopencm3/stm32/adc.h>
+#endif
 #include <libopencm3/stm32/dma.h>
 #include <libopencm3/stm32/flash.h>
 #include <libopencm3/stm32/iwdg.h>
@@ -35,13 +37,17 @@
 #include "defs.h"
 #include "config.h"
 
-#define CNT(clk, rate) (((clk) + ((rate) >> 1)) / (rate)) // Rate-based clock count
-#define KHZ(clk) ((clk) / 1000)
-#define MHZ(clk) ((clk) / 1000000)
+#define CLK_CNT(rate) ((CLK + ((rate) >> 1)) / (rate))
+#define CLK_KHZ (CLK / 1000)
+#define CLK_MHZ (CLK / 1000000)
 
-#define cm_wait_for_interrupt() __asm__("wfi")
+#if defined IO_PA2 || defined IO_PA6
+#define IO_ANALOG (cfg.input_mode == 1)
+#else
+#define IO_ANALOG 0
+#endif
 
-extern struct cfg {
+typedef struct {
 	const uint16_t id;
 	const char revision;
 	const char target_type;
@@ -49,53 +55,64 @@ extern struct cfg {
 	const char _null;
 	char arm;
 	char damp;
-	char reverse;
+	char revdir;
 	char timing;
 	char freq_min;
 	char freq_max;
 	char duty_min;
 	char duty_max;
-	char duty_lim;
+	char duty_spup;
+	char duty_ramp;
 	char duty_drag;
 	char throt_mode;
 	char throt_cal;
 	short throt_min;
 	short throt_mid;
 	short throt_max;
-	char serial_mode;
-	char serial_chid;
-	char music1[64];
-	char music2[64];
-	char music3[64];
-	char volume1;
-	char volume2;
-	char volume3;
-	short last_error;
-} cfg;
+	char input_mode;
+	char input_chid;
+	char telem_mode;
+	char telem_phid;
+	char telem_poles;
+	char prot_temp;
+	char prot_volt;
+	char prot_cells;
+	char prot_curr;
+	char music[128];
+	char volume;
+	char beacon;
+	char led;
+} Cfg;
+
+typedef struct {
+	int Kp, Ki, Kd, Li, i, x;
+} PID;
 
 extern char _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _boot[], _vec[]; // Linker exports
-
-extern int throt, telem, erpt, erpm;
+extern const Cfg cfgdata;
+extern Cfg cfg;
+extern int throt, erpt, erpm, temp, volt, curr, csum, dshotval, beepval;
+extern char analog, telreq, flipdir, beacon, dshotext;
+extern volatile uint32_t tick;
 
 void init(void);
 void initio(void);
+void initled(void);
 void inittelem(void);
-
-void comp_in(int x);
-void comp_out(int on);
-
+void ledctl(int x);
+void hsictl(int x);
+void compctl(int x);
 void io_serial(void);
-void io_pullup(void);
-
+void io_analog(void);
+void adc_trig(void);
+void adc_data(int t, int v, int c, int x);
 void sendtelem(void);
 int execcmd(char *buf);
-
 int clamp(int x, int a1, int a2);
 int scale(int x, int a1, int a2, int b1, int b2);
-
-void loadcfg(void);
+int smooth(int *s, int x, int n);
+int calcpid(PID *pid, int x, int y);
 void checkcfg(void);
 int savecfg(void);
 int playmusic(const char *str, int vol);
 void reset(void) __attribute__((__noreturn__));
-void error(int code) __attribute__((__noreturn__));

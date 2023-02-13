@@ -21,13 +21,17 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
+#ifdef USARTv1
+#include <libopencm3/cm3/common.h>
+#include <libopencm3/stm32/f1/usart.h>
+#else
 #include <libopencm3/stm32/usart.h>
+#endif
 #include <libopencm3/stm32/flash.h>
-#include <libopencm3/stm32/wwdg.h>
 #include <libopencm3/stm32/crc.h>
 #include "config.h"
 
-#define CNT(clk, rate) (((clk) + ((rate) >> 1)) / (rate)) // Rate-based clock count
+#define CLK_CNT(rate) ((CLK + ((rate) >> 1)) / (rate))
 
 extern char _rom[], _rom_end[], _ram_end[]; // Linker exports
 
@@ -42,5 +46,6 @@ int recvdata(char *buf);
 void senddata(const char *buf, int len);
 
 uint32_t crc32(const char *buf, int len);
-int writeflash(char *dst, const char *src, int len) __attribute__((__long_call__));
-void updateflash(char *dst, const char *src, int len) __attribute__((__long_call__, __noreturn__));
+int write(char *dst, const char *src, int len) __attribute__((__long_call__));
+void update(char *dst, const char *src, int len) __attribute__((__long_call__));
+void setwrp(int type);

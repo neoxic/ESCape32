@@ -1,27 +1,32 @@
 ESCape32
 ========
 
-Firmware for 32-bit BLDC motor electronic speed controllers that aims to Keep-It-Super-Simple. It is designed to deliver smooth and efficient motor drive, fast transitions from a complete stop to full throttle, robust direction reversals, and maximum hardware support.
+Firmware for 32-bit BLDC motor electronic speed controllers that aims at simplicity. It is designed to deliver smooth and efficient motor drive, fast transitions from a complete stop to full throttle, robust direction reversals, and maximum hardware support.
 
 
 Features
 --------
 
-+ Servo PWM with automatic throttle calibration
-+ iBUS, S.BUS, DSHOT 300/600, bidirectional DSHOT
-+ Proportional brake / drag brake
-+ Variable PWM frequency
-+ KISS telemetry
++ Servo PWM up to 400Hz, automatic throttle calibration
++ DSHOT 300/600, bidirectional DSHOT, extended telemetry
++ Analog/serial/iBUS/SBUS input mode
++ KISS/iBUS/S.Port telemetry
++ DSHOT 3D mode, turtle mode, beacon, LED, direction change
++ Proportional brake, drag brake
++ Temperature/voltage/current protection
++ Variable PWM frequency, active freewheeling
 + Customizable sounds
-+ Configuration/firmware updates over the signal wire using a generic USB-TTL adapter
++ Configuration via CLI using a USB-TTL adapter or Betaflight passthrough
 
 
 Installation
 ------------
 
+The list of compatible ESCs can be found [here](https://github.com/neoxic/ESCape32/wiki/Targets).
+
 The latest release can be downloaded [here](https://github.com/neoxic/ESCape32/releases).
 
-Visit the [Wiki](https://github.com/neoxic/ESCape32/wiki) to get started with ESCape32.
+Visit the [ESCape32 Wiki](https://github.com/neoxic/ESCape32/wiki) for more information.
 
 
 Dependencies
@@ -46,9 +51,8 @@ cd build
 make
 ```
 
-To flash a particular target using an ST-LINK probe, run for example:
+To flash a particular target using an ST-LINK programmer, run:
 
 ```
-make flash-BOOT_F0_PA2
-make flash-F051_PA2_A
+make flash-<target>
 ```

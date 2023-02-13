@@ -20,35 +20,35 @@
 #define CFG_MAP(XX) \
 	XX( 0, val, arm) \
 	XX( 1, val, damp) \
-	XX( 2, val, reverse) \
+	XX( 2, val, revdir) \
 	XX( 3, val, timing) \
 	XX( 4, val, freq_min) \
 	XX( 5, val, freq_max) \
 	XX( 6, val, duty_min) \
 	XX( 7, val, duty_max) \
-	XX( 8, val, duty_lim) \
-	XX( 9, val, duty_drag) \
-	XX(10, val, throt_mode) \
-	XX(11, val, throt_cal) \
-	XX(12, val, throt_min) \
-	XX(13, val, throt_mid) \
-	XX(14, val, throt_max) \
-	XX(15, val, serial_mode) \
-	XX(16, val, serial_chid) \
-	XX(17, str, music1) \
-	XX(18, str, music2) \
-	XX(19, str, music3) \
-	XX(20, val, volume1) \
-	XX(21, val, volume2) \
-	XX(22, val, volume3) \
-	XX(23, val, last_error) \
+	XX( 8, val, duty_spup) \
+	XX( 9, val, duty_ramp) \
+	XX(10, val, duty_drag) \
+	XX(11, val, throt_mode) \
+	XX(12, val, throt_cal) \
+	XX(13, val, throt_min) \
+	XX(14, val, throt_mid) \
+	XX(15, val, throt_max) \
+	XX(16, val, input_mode) \
+	XX(17, val, input_chid) \
+	XX(18, val, telem_mode) \
+	XX(19, val, telem_phid) \
+	XX(20, val, telem_poles) \
+	XX(21, val, prot_temp) \
+	XX(22, val, prot_volt) \
+	XX(23, val, prot_cells) \
+	XX(24, val, prot_curr) \
+	XX(25, str, music) \
+	XX(26, val, volume) \
+	XX(27, val, beacon) \
+	XX(28, val, led) \
 
-static const char *const cmds[] = {"help", "info", "show", "get", "set", "play", "save", "_throt", "_telem", 0};
-static const char *const keys[] = {
-#define XX(idx, type, key) #key,
-CFG_MAP(XX)
-#undef XX
-0};
+static int beep = -1;
 
 static int split(char *str, char **vec, int len, const char *sep) {
 	int idx = 0;
@@ -81,7 +81,14 @@ static void appendstr(char **pos, const char *str) {
 
 static void appendval(char **pos, int val) {
 	char buf[12];
-	itoa(val, buf, 10);
+	appendstr(pos, itoa(val, buf, 10));
+}
+
+static void appenddec(char **pos, int val) {
+	char buf[12];
+	appendstr(pos, itoa(val / 100, buf, 10));
+	appendstr(pos, ".");
+	for (int i = strlen(itoa(val % 100, buf, 10)); i < 2; ++i) appendstr(pos, "0");
 	appendstr(pos, buf);
 }
 
@@ -96,7 +103,21 @@ static void appendval(char **pos, int val) {
 	if (!getval(str, &val)) goto error; \
 	cfg.key = val; \
 
+#define setbeepstr(str)
+
+static int setbeepval(int val) {
+	if (beep < 0 || val < 0) return val;
+	beep = beepval = val;
+	return val;
+}
+
 int execcmd(char *buf) {
+	static const char *const cmds[] = {"help", "info", "show", "get", "set", "reset", "save", "play", "throt", "beep", 0};
+	static const char *const keys[] = {
+#define XX(idx, type, key) #key,
+CFG_MAP(XX)
+#undef XX
+	0};
 	char *args[10];
 	int narg = split(buf, args, 10, " \t\r\n");
 	if (!narg) return 0;
@@ -110,8 +131,11 @@ int execcmd(char *buf) {
 				"show\n"
 				"get <param>\n"
 				"set <param> <value>\n"
-				"play [<music>] [<volume>]\n"
+				"reset\n"
 				"save\n"
+				"play <music> [<volume>]\n"
+				"throt <value>\n"
+				"beep\n"
 			);
 			break;
 		case 1: // 'info'
@@ -120,7 +144,17 @@ int execcmd(char *buf) {
 			appendval(&pos, cfg.revision);
 			appendstr(&pos, " [");
 			appendstr(&pos, cfg.target_name);
-			appendstr(&pos, "]\n");
+			appendstr(&pos, "]\nTemp: ");
+			appendval(&pos, temp);
+			appendstr(&pos, "C\nVolt: ");
+			appenddec(&pos, volt);
+			appendstr(&pos, "V\nCurr: ");
+			appenddec(&pos, curr);
+			appendstr(&pos, "A\nCsum: ");
+			appendval(&pos, csum);
+			appendstr(&pos, "mAh\nERPM: ");
+			appendval(&pos, erpm);
+			appendstr(&pos, "\n");
 			break;
 		case 2: // 'show'
 			if (narg != 1) goto error;
@@ -129,12 +163,13 @@ int execcmd(char *buf) {
 CFG_MAP(XX)
 #undef XX
 			break;
-		case 3: // 'get <key>'
+		case 3: // 'get <param>'
 			if (narg != 2) goto error;
 			switch (getidx(args[1], keys)) {
 #define XX(idx, type, key) \
 				case idx: \
 					appendpair(&pos, type, key); \
+					setbeep##type(cfg.key); \
 					break;
 CFG_MAP(XX)
 #undef XX
@@ -142,7 +177,7 @@ CFG_MAP(XX)
 					goto error;
 			}
 			break;
-		case 4: // 'set <key> <val>'
+		case 4: // 'set <param> <value>'
 			if (narg != 3) goto error;
 			switch (getidx(args[1], keys)) {
 #define XX(idx, type, key) \
@@ -150,6 +185,7 @@ CFG_MAP(XX)
 					set##type(args[2], key); \
 					checkcfg(); \
 					appendpair(&pos, type, key); \
+					setbeep##type(cfg.key); \
 					break;
 CFG_MAP(XX)
 #undef XX
@@ -157,22 +193,29 @@ CFG_MAP(XX)
 					goto error;
 			}
 			break;
-		case 5: // 'play [<music>] [<volume>]'
-			if (narg < 1 || narg > 3) goto error;
-			val = cfg.volume1;
-			if (narg == 3 && (!getval(args[2], &val) || val < 1 || val > 100)) goto error;
-			if (!playmusic(narg >= 2 ? args[1] : cfg.music1, val)) goto error;
+		case 5: // 'reset'
+			if (narg != 1) goto error;
+			__disable_irq();
+			memcpy(&cfg, &cfgdata, sizeof cfgdata);
+			__enable_irq();
 			break;
 		case 6: // 'save'
-			if (narg != 1 || erpt || !savecfg()) goto error;
+			if (narg != 1 || !setbeepval(savecfg())) goto error;
 			break;
-		case 7: // '_throt <val>'
+		case 7: // 'play <music> [<volume>]'
+			if (narg < 2 || narg > 3) goto error;
+			val = cfg.volume;
+			if (narg == 3 && (!getval(args[2], &val) || val < 1 || val > 100)) goto error;
+			if (!playmusic(args[1], val)) goto error;
+			break;
+		case 8: // 'throt <value>'
 			if (narg != 2 || !getval(args[1], &val) || val < -2000 || val > 2000) goto error;
 			throt = val;
 			break;
-		case 8: // '_telem'
+		case 9: // 'beep'
 			if (narg != 1) goto error;
-			telem = 1;
+			if (beep < 0) beep = 0;
+			beepval = beep;
 			break;
 		default:
 			goto error;
