@@ -59,22 +59,22 @@ void checkcfg(void) {
 	cfg.revdir = !!cfg.revdir;
 #ifdef SENSORED
 	cfg.timing = 0;
+	cfg.sine_range = 0;
+	cfg.sine_power = 0;
 #else
 	cfg.timing = clamp(cfg.timing, 1, 7);
+	cfg.sine_range = cfg.damp && cfg.sine_range ? clamp(cfg.sine_range, 5, 25) : 0;
+	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
 #endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
 	cfg.freq_max = clamp(cfg.freq_max, cfg.freq_min, 96);
-	cfg.duty_min = clamp(cfg.duty_min, 0, 100);
+	cfg.duty_min = clamp(cfg.duty_min, 1, 100);
 	cfg.duty_max = clamp(cfg.duty_max, cfg.duty_min, 100);
-	cfg.duty_spup = clamp(cfg.duty_spup, 0, 100);
-	cfg.duty_ramp = clamp(cfg.duty_ramp, 1, 10);
+	cfg.duty_spup = clamp(cfg.duty_spup, 1, 100);
+	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 10);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, 2);
-#ifdef USE_HSE
-	cfg.throt_cal = 0;
-#else
 	cfg.throt_cal = !!cfg.throt_cal;
-#endif
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
 	cfg.throt_max = clamp(cfg.throt_max, cfg.throt_min + 200, 2100);
 	cfg.throt_mid = clamp(cfg.throt_mid, cfg.throt_min + 100, cfg.throt_max - 100);
@@ -110,9 +110,11 @@ void checkcfg(void) {
 #else
 	cfg.led = 0;
 #endif
+#ifndef ANALOG
 	if (!IO_ANALOG) return;
-	cfg.arm = 1; // Ensure low signal on startup
+	cfg.arm = 1; // Ensure low level on startup
 	cfg.throt_mode = 0;
+#endif
 }
 
 int savecfg(void) {
@@ -167,7 +169,11 @@ int playmusic(const char *str, int vol) {
 	vol <<= 1;
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+#ifdef INVERTED_HIGH
+	TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC3NE | TIM_CCER_CC1P;
+#else
 	TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC3NE;
+#endif
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 8MHz
 	for (int a, b; (a = *str++);) {
 		if (a >= 'a' && a <= 'g') a -= 'c', b = 0; // Low note
@@ -195,7 +201,7 @@ int playmusic(const char *str, int vol) {
 	TIM1_CCMR2 = 0;
 	TIM1_CCER = 0;
 	TIM1_PSC = 0;
-	TIM1_ARR = CLK_KHZ / 16;
+	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 	flag = 0;
 	return !str[-1];

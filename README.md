@@ -11,7 +11,8 @@ Features
 + DSHOT 300/600, bidirectional DSHOT, extended telemetry
 + Analog/serial/iBUS/SBUS input mode
 + KISS/iBUS/S.Port telemetry
-+ DSHOT 3D mode, turtle mode, beacon, LED, direction change
++ DSHOT 3D mode, turtle mode, beacon, LED, programming
++ Sine startup mode
 + Proportional brake, drag brake
 + Temperature/voltage/current protection
 + Variable PWM frequency, active freewheeling

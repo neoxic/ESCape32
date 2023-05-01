@@ -15,7 +15,7 @@ endif()
 find_program(FLASH st-flash)
 add_compile_options(-ffreestanding -ffunction-sections -fdata-sections -fsingle-precision-constant
 	-Wall -Wextra -Wpedantic -Wundef -Wshadow -Wredundant-decls -Wstrict-prototypes -Wmissing-prototypes
-	-Wno-variadic-macros -Wno-unused-result -Wno-unused-parameter)
+	-Wno-variadic-macros -Wno-unused-result -Wno-unused-parameter -Wno-unused-label)
 add_link_options(-nostartfiles -Wl,--gc-sections)
 
 function(add_target name mcu)
@@ -40,9 +40,7 @@ function(add_target name mcu)
 		DEPENDS ${elf}
 	)
 	add_custom_target(${name} ALL DEPENDS ${hex})
-	if(mcu MATCHES "^STM32")
-		add_custom_target(flash-${name} COMMAND ${FLASH} --reset --connect-under-reset --format ihex write ${hex} DEPENDS ${hex})
-	endif()
+	add_custom_target(flash-${name} COMMAND ${FLASH} --reset --connect-under-reset --format ihex write ${hex} DEPENDS ${hex})
 endfunction()
 
 add_subdirectory(boot)
@@ -50,6 +48,8 @@ add_subdirectory(boot)
 add_target(AIKON1 STM32G071 DEAD_TIME=35 COMP_MAP=213 IO_PA6)
 add_target(AIRBOT1 AT32F421 DEAD_TIME=66 COMP_MAP=321 SENS_MAP=0xA3A6 VOLT_MUL=74 CURR_MUL=20 LED_MAP=0xA15B3B4)
 add_target(EMAX1 STM32F051 DEAD_TIME=26 COMP_MAP=123 IO_PA2)
+add_target(ESCAPE1 STM32G071 DEAD_TIME=35 COMP_MAP=123 SENS_MAP=0xA5A4 VOLT_MUL=110 CURR_MUL=40 LED_WS2812 IO_PA2)
+add_target(FLYCOLOR1 STM32F051 DEAD_TIME=26 COMP_MAP=123 SENS_MAP=0xA6 VOLT_MUL=110 LED_MAP=0xB5B4B3 IO_PA2)
 add_target(HAKRC1 STM32F051 DEAD_TIME=26 COMP_MAP=213 SENS_MAP=0xA3 VOLT_MUL=110 LED_MAP=0xA15B5B3 LED_INV)
 add_target(HAKRC2 AT32F421 DEAD_TIME=66 COMP_MAP=213 SENS_MAP=0xA3 VOLT_MUL=110 LED_MAP=0xA15B5B3 LED_INV)
 add_target(HGLRC1 STM32F051 DEAD_TIME=26 COMP_MAP=123 SENS_MAP=0xA6 VOLT_MUL=210 IO_PA2)
@@ -63,5 +63,4 @@ add_target(TMOTOR2 STM32F051 DEAD_TIME=26 COMP_MAP=321)
 add_target(TMOTOR3 STM32G071 DEAD_TIME=35 COMP_MAP=231 IO_PA6)
 
 # Experimental targets
-add_target(_SPIN32 STSPIN32F0 DEAD_TIME=26)
-add_target(_G071PA2 STM32G071 DEAD_TIME=35 COMP_MAP=123 LED_WS2812 IO_PA2)
+add_target(_SPIN32 STSPIN32F0 DEAD_TIME=26 ANALOG) # Sensored drive using STEVAL_SPIN3201 board

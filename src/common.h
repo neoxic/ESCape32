@@ -41,7 +41,9 @@
 #define CLK_KHZ (CLK / 1000)
 #define CLK_MHZ (CLK / 1000000)
 
-#if defined IO_PA2 || defined IO_PA6
+#ifdef ANALOG
+#define IO_ANALOG (ANALOG_MIN != ANALOG_MAX)
+#elif defined IO_PA2 || defined IO_PA6
 #define IO_ANALOG (cfg.input_mode == 1)
 #else
 #define IO_ANALOG 0
@@ -57,6 +59,8 @@ typedef struct {
 	char damp;
 	char revdir;
 	char timing;
+	char sine_range;
+	char sine_power;
 	char freq_min;
 	char freq_max;
 	char duty_min;
@@ -89,6 +93,7 @@ typedef struct {
 } PID;
 
 extern char _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _boot[], _vec[]; // Linker exports
+extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, erpt, erpm, temp, volt, curr, csum, dshotval, beepval;

@@ -29,6 +29,10 @@
 #define SENS_CHAN 0x40
 #endif
 
+#ifndef THROT_CHAN
+#define THROT_CHAN 0x4 // A2
+#endif
+
 #define CLK 48000000
 
 #define IFTIM TIM2

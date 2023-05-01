@@ -22,31 +22,33 @@
 	XX( 1, val, damp) \
 	XX( 2, val, revdir) \
 	XX( 3, val, timing) \
-	XX( 4, val, freq_min) \
-	XX( 5, val, freq_max) \
-	XX( 6, val, duty_min) \
-	XX( 7, val, duty_max) \
-	XX( 8, val, duty_spup) \
-	XX( 9, val, duty_ramp) \
-	XX(10, val, duty_drag) \
-	XX(11, val, throt_mode) \
-	XX(12, val, throt_cal) \
-	XX(13, val, throt_min) \
-	XX(14, val, throt_mid) \
-	XX(15, val, throt_max) \
-	XX(16, val, input_mode) \
-	XX(17, val, input_chid) \
-	XX(18, val, telem_mode) \
-	XX(19, val, telem_phid) \
-	XX(20, val, telem_poles) \
-	XX(21, val, prot_temp) \
-	XX(22, val, prot_volt) \
-	XX(23, val, prot_cells) \
-	XX(24, val, prot_curr) \
-	XX(25, str, music) \
-	XX(26, val, volume) \
-	XX(27, val, beacon) \
-	XX(28, val, led) \
+	XX( 4, val, sine_range) \
+	XX( 5, val, sine_power) \
+	XX( 6, val, freq_min) \
+	XX( 7, val, freq_max) \
+	XX( 8, val, duty_min) \
+	XX( 9, val, duty_max) \
+	XX(10, val, duty_spup) \
+	XX(11, val, duty_ramp) \
+	XX(12, val, duty_drag) \
+	XX(13, val, throt_mode) \
+	XX(14, val, throt_cal) \
+	XX(15, val, throt_min) \
+	XX(16, val, throt_mid) \
+	XX(17, val, throt_max) \
+	XX(18, val, input_mode) \
+	XX(19, val, input_chid) \
+	XX(20, val, telem_mode) \
+	XX(21, val, telem_phid) \
+	XX(22, val, telem_poles) \
+	XX(23, val, prot_temp) \
+	XX(24, val, prot_volt) \
+	XX(25, val, prot_cells) \
+	XX(26, val, prot_curr) \
+	XX(27, str, music) \
+	XX(28, val, volume) \
+	XX(29, val, beacon) \
+	XX(30, val, led) \
 
 static int beep = -1;
 
@@ -198,6 +200,7 @@ CFG_MAP(XX)
 			__disable_irq();
 			memcpy(&cfg, &cfgdata, sizeof cfgdata);
 			__enable_irq();
+			setbeepval(1);
 			break;
 		case 6: // 'save'
 			if (narg != 1 || !setbeepval(savecfg())) goto error;

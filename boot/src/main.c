@@ -36,6 +36,9 @@ void main(void) {
 		RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
 		sendval(RES_OK); // ACK after reboot
 	}
+#ifdef FAST_EXIT
+	else goto done;
+#endif
 	for (;;) {
 		switch (recvval()) {
 			case CMD_PROBE: // Probe bootloader
@@ -48,18 +51,18 @@ void main(void) {
 			}
 			case CMD_READ: { // Read block
 				int num = recvval();
-				if (num == -1) goto error;
+				if (num == -1) goto done;
 				int cnt = recvval();
-				if (cnt == -1) goto error;
+				if (cnt == -1) goto done;
 				senddata(_rom_end + (num << 10), (cnt + 1) << 2);
 				break;
 			}
 			case CMD_WRITE: { // Write block
 				int num = recvval();
-				if (num == -1) goto error;
+				if (num == -1) goto done;
 				char buf[1024];
 				int len = recvdata(buf);
-				if (len == -1) goto error;
+				if (len == -1) goto done;
 				sendval(write(_rom_end + (num << 10), buf, len) ? RES_OK : RES_ERROR);
 				break;
 			}
@@ -68,7 +71,7 @@ void main(void) {
 				int pos = 0;
 				for (int i = 0, n = (_rom_end - _rom) >> 10; i < n; ++i) {
 					int len = recvdata(buf + pos);
-					if (len == -1) goto error;
+					if (len == -1) goto done;
 					sendval(RES_OK);
 					pos += len;
 					if (len < 1024) break; // Last block
@@ -92,7 +95,7 @@ void main(void) {
 				sendval(RES_ERROR);
 				break;
 			default: // Pass control to application
-			error:
+			done:
 				if (*(uint16_t *)_rom_end != 0x32ea) break;
 				__asm__("msr msp, %0" :: "g" (*(uint32_t *)(_rom_end + PAGE_SIZE))); // Initialize stack pointer
 				(*(void (**)(void))(_rom_end + PAGE_SIZE + 4))(); // Jump to application

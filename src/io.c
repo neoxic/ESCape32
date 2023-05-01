@@ -41,12 +41,13 @@ static void sbusdma(void);
 static char rxlen;
 #endif
 
-static void (*ioirq)(void) = entryirq;
+static void (*ioirq)(void);
 static void (*iodma)(void);
 
 static char iobuf[1024], dshotinv;
 
 void initio(void) {
+	ioirq = entryirq;
 	TIM_BDTR(IOTIM) = TIM_BDTR_MOE;
 	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_CK_INT_N_8;
@@ -151,8 +152,7 @@ static void entryirq(void) {
 	DMA1_CMAR(IOTIM_DMA) = (uint32_t)iobuf;
 }
 
-static void calibirq(void) {
-#ifndef USE_HSE // Align pulse period to the nearest millisecond via HSI trimming within 6.25% margin
+static void calibirq(void) { // Align pulse period to the nearest millisecond via HSI trimming within 6.25% margin
 	static int n, q, x, y;
 	if (!cfg.throt_cal) goto done;
 	int p = TIM_CCR1(IOTIM); // Pulse period
@@ -172,7 +172,6 @@ static void calibirq(void) {
 	q = 0;
 	return;
 done:
-#endif
 	ioirq = servoirq;
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
 	TIM_CCER(IOTIM) = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC2P; // IC1 on rising edge on TI1, IC2 on falling edge on TI1
@@ -402,20 +401,24 @@ static void dshotdma(void) {
 			break;
 #endif
 		case 40: // Increase timing
-			if (cnt != 6 || cfg.timing == 7) break;
-			beepval = ++cfg.timing;
+			if (cnt != 6) break;
+			if (cfg.timing < 7) ++cfg.timing;
+			beepval = cfg.timing;
 			break;
 		case 41: // Decrease timing
-			if (cnt != 6 || cfg.timing == 1) break;
-			beepval = --cfg.timing;
+			if (cnt != 6) break;
+			if (cfg.timing > 1) --cfg.timing;
+			beepval = cfg.timing;
 			break;
 		case 42: // Increase acceleration ramping
-			if (cnt != 6 || cfg.duty_ramp == 10) break;
-			beepval = ++cfg.duty_ramp;
+			if (cnt != 6) break;
+			if (cfg.duty_ramp < 10) ++cfg.duty_ramp;
+			beepval = cfg.duty_ramp;
 			break;
 		case 43: // Decrease acceleration ramping
-			if (cnt != 6 || cfg.duty_ramp == 1) break;
-			beepval = --cfg.duty_ramp;
+			if (cnt != 6) break;
+			if (cfg.duty_ramp > 0) --cfg.duty_ramp;
+			beepval = cfg.duty_ramp;
 			break;
 	}
 }

@@ -19,10 +19,18 @@
 
 #if SENS_MAP == 0xA5A4 // A5 (volt), A4 (curr)
 #define SENS_CNT 2
-#define SENS_CHAN 0x30
+#define SENS_CHAN 0x54
 #elif SENS_MAP == 0xA0 // A0 (volt)
 #define SENS_CNT 1
-#define SENS_CHAN 0x1
+#define SENS_CHAN 0x0
+#endif
+
+#ifndef THROT_CHAN
+#ifdef IO_PA2
+#define THROT_CHAN 2 // A2
+#else
+#define THROT_CHAN 6 // A6
+#endif
 #endif
 
 #define CLK 64000000

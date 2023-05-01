@@ -25,6 +25,10 @@
 #define SENS_CHAN 0x3
 #endif
 
+#ifndef THROT_CHAN
+#define THROT_CHAN 2 // A2
+#endif
+
 #define CLK 120000000
 #define IO_PA2
 #define IO_TYPE 0

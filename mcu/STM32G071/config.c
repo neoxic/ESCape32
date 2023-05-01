@@ -61,6 +61,7 @@ void init(void) {
 	GPIOB_AFRL |= 0x20; // B1 (TIM1_CH3N)
 	GPIOB_MODER &= ~0x4; // B1 (TIM1_CH3N)
 #endif
+#ifndef ANALOG
 #ifdef IO_PA2
 	RCC_APBENR2 |= RCC_APBENR2_TIM15EN;
 	GPIOA_AFRL |= 0x500; // A2 (TIM15_CH1)
@@ -76,6 +77,7 @@ void init(void) {
 	GPIOB_AFRL |= 0x10000; // B4 (TIM3_CH1)
 	GPIOB_PUPDR |= 0x100; // B4 (pull-up)
 	GPIOB_MODER &= ~0x100; // B4 (TIM3_CH1)
+#endif
 #endif
 #endif
 
@@ -114,20 +116,17 @@ void init(void) {
 	while (ADC1_CR & ADC_CR_ADCAL);
 	ADC1_CR = ADC_CR_ADEN;
 	while (!(ADC1_ISR & ADC_ISR_ADRDY));
-	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
+	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE | ADC_CFGR1_CHSELRMOD;
 	ADC1_SMPR = ADC_SMPR_SMPx_160DOT5CYC; // Sampling time ~10us @ HSI16
 	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = SENS_CHAN | 0x3000; // CH12 (temp), CH13 (vref)
-	len = SENS_CNT + 2;
+	ADC1_CHSELR = SENS_CHAN;
+	len = SENS_CNT;
 	if (IO_ANALOG) {
-#ifdef IO_PA2
-		ADC1_CHSELR |= 0x4; // A2 (throt)
-#else
-		ADC1_CHSELR |= 0x40; // A6 (throt)
-#endif
-		++len;
+		ADC1_CHSELR |= THROT_CHAN << (len++ << 2);
 		ain = 1;
 	}
+	ADC1_CHSELR |= 0xfdc << (len << 2); // CH12 (temp), CH13 (vref)
+	len += 2;
 	while (!(ADC1_ISR & ADC_ISR_CCRDY));
 	DMA1_CPAR(4) = (uint32_t)&ADC1_DR;
 	DMA1_CMAR(4) = (uint32_t)buf;
@@ -236,7 +235,6 @@ void compctl(int x) {
 	}
 }
 
-#ifdef IO_PA2
 void io_serial(void) {
 	TIM15_DIER = 0;
 	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
@@ -247,20 +245,21 @@ void io_serial(void) {
 	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_USART2_RX;
 }
 
-void io_analog(void) {
-	TIM15_DIER = 0;
-	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
-	RCC_APBENR2 &= ~RCC_APBENR2_TIM15EN;
-	GPIOA_PUPDR &= ~0x30; // A2 (no pull-up/pull-down)
-	GPIOA_MODER |= 0x30; // A2 (analog)
-}
-#elif defined IO_PA6
+#ifdef IO_PA6
 void io_analog(void) {
 	TIM3_DIER = 0;
 	nvic_clear_pending_irq(NVIC_TIM34_IRQ);
 	RCC_APBENR1 &= ~RCC_APBENR1_TIM3EN;
 	GPIOA_PUPDR &= ~0x3000; // A6 (no pull-up/pull-down)
 	GPIOA_MODER |= 0x3000; // A6 (analog)
+}
+#else
+void io_analog(void) {
+	TIM15_DIER = 0;
+	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
+	RCC_APBENR2 &= ~RCC_APBENR2_TIM15EN;
+	GPIOA_PUPDR &= ~0x30; // A2 (no pull-up/pull-down)
+	GPIOA_MODER |= 0x30; // A2 (analog)
 }
 #endif
 
@@ -284,23 +283,13 @@ void dma1_channel4_7_dmamux_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(4);
 	DMA1_CCR(4) = 0;
 	int i = 0, v = 0, c = 0, x = 0;
-#ifdef IO_PA2
-	if (ain) x = buf[i++];
-#endif
-#ifdef SENS_SWAP
-	v = buf[i++];
-	c = buf[i++];
-#else
 #if SENS_CNT == 2
 	c = buf[i++];
 #endif
 #if SENS_CNT >= 1
 	v = buf[i++];
 #endif
-#endif
-#ifdef IO_PA6
 	if (ain) x = buf[i++];
-#endif
 	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
 	int t = (buf[i] * r / 3000 - ST_TSENSE_CAL1_30C) * 100 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 30;
 	adc_data(t, v * r >> 12, c * r >> 12, x);

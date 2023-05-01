@@ -20,7 +20,7 @@
 
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
-static uint16_t buf[10];
+static uint16_t buf[5];
 static char len, ain;
 
 void init(void) {
@@ -43,6 +43,7 @@ void init(void) {
 	GPIOB_PUPDR = 0x00001000; // B6 (pull-up)
 	GPIOA_MODER = 0xebeabfff; // A7 (TIM1_CH1N), A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_MODER = 0xffffeffa; // B0 (TIM1_CH2N), B1 (TIM1_CH3N), B6 (USART1_TX)
+#ifndef ANALOG
 #ifdef IO_PA2
 	RCC_APB2ENR |= RCC_APB2ENR_TIM15EN;
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
@@ -52,6 +53,7 @@ void init(void) {
 	GPIOB_AFRL |= 0x10000; // B4 (TIM3_CH1)
 	GPIOB_PUPDR |= 0x100; // B4 (pull-up)
 	GPIOB_MODER &= ~0x100; // B4 (TIM3_CH1)
+#endif
 #endif
 
 	nvic_set_priority(NVIC_TIM3_IRQ, 0x40);
@@ -82,9 +84,9 @@ void init(void) {
 	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH16 (temp), CH17 (vref)
 	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= 0x4; // A2 (throt)
-		++len;
+		ADC1_CHSELR |= THROT_CHAN;
 		ain = 1;
+		++len;
 	}
 	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
 	DMA1_CMAR(1) = (uint32_t)buf;
@@ -114,7 +116,6 @@ void compctl(int x) {
 	COMP_CSR = cr;
 }
 
-#ifdef IO_PA2
 void io_serial(void) {
 	TIM15_DIER = 0;
 	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
@@ -130,7 +131,6 @@ void io_analog(void) {
 	GPIOA_PUPDR &= ~0x30; // A2 (no pull-up/pull-down)
 	GPIOA_MODER |= 0x30; // A2 (analog)
 }
-#endif
 
 void adc_trig(void) {
 	if (DMA1_CCR(1) & DMA_CCR_EN) return;
@@ -157,7 +157,7 @@ void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
 	int i = 0, v = 0, c = 0, x = 0;
-#ifdef IO_PA2
+#ifndef THROT_LAST
 	if (ain) x = buf[i++];
 #endif
 #ifdef SENS_SWAP
@@ -170,6 +170,9 @@ void dma1_channel1_isr(void) {
 #if SENS_CNT >= 1
 	v = buf[i++];
 #endif
+#endif
+#ifdef THROT_LAST
+	if (ain) x = buf[i++];
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
 	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 80 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 30;
