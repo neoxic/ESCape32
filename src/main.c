@@ -256,9 +256,7 @@ void adc_data(int t, int v, int c, int x) {
 	temp = smooth(&st, t > 0 ? t : 0, 10); // C
 	volt = smooth(&sv, v * VOLT_MUL / 100, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
-#ifndef ANALOG
 	if (!analog) return;
-#endif
 	throt = scale(smooth(&sx, x, 4), 10, 4085, ANALOG_MIN * 20, ANALOG_MAX * 20); // Analog throttle
 }
 
@@ -338,6 +336,7 @@ void main(void) {
 	initio();
 #else
 	throt = ANALOG_MIN * 20;
+	analog = ANALOG_MIN != ANALOG_MAX;
 #endif
 
 	TIM1_BDTR = (DEAD_TIME & TIM_BDTR_DTG_MASK) | TIM_BDTR_MOE;
