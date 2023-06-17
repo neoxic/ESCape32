@@ -96,7 +96,7 @@ extern char _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _boot[], _vec[]; /
 extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
-extern int throt, erpt, erpm, temp, volt, curr, csum, dshotval, beepval;
+extern int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval;
 extern char analog, telreq, flipdir, beacon, dshotext;
 extern volatile uint32_t tick;
 
@@ -119,5 +119,6 @@ int smooth(int *s, int x, int n);
 int calcpid(PID *pid, int x, int y);
 void checkcfg(void);
 int savecfg(void);
+int resetcfg(void);
 int playmusic(const char *str, int vol);
 void reset(void) __attribute__((__noreturn__));

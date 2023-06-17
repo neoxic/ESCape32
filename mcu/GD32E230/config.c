@@ -151,7 +151,7 @@ void tim1_brk_up_trg_com_isr(void) {
 	int sr = TIM1_SR;
 	if (sr & TIM_SR_UIF) {
 		TIM1_SR = ~TIM_SR_UIF;
-		COMP_CSR &= ~0x700; // COMP_OUT off
+		if (TIM1_CCR4) COMP_CSR &= ~0x700; // COMP_OUT off
 	}
 	if (sr & TIM_SR_COMIF) tim1_com_isr();
 }

@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 3
+#define REVISION 4
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -34,8 +34,8 @@ const Cfg cfgdata = {
 	.freq_max = FREQ_MAX,       // Maximum PWM frequency (kHz) [16..96]
 	.duty_min = DUTY_MIN,       // Minimum duty cycle (%) [1..100]
 	.duty_max = DUTY_MAX,       // Maximum duty cycle (%) [1..100]
-	.duty_spup = DUTY_SPUP,     // Maximum power during spin-up (%) [1..100]
-	.duty_ramp = DUTY_RAMP,     // Acceleration ramping (0.5*X %/ms) [0 - off, 1..10]
+	.duty_spup = DUTY_SPUP,     // Maximum power during spin-up (%) [1..25]
+	.duty_ramp = DUTY_RAMP,     // Acceleration ramping (0.1*X %/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
 	.throt_cal = THROT_CAL,     // Throttle calibration
@@ -60,12 +60,12 @@ const Cfg cfgdata = {
 __attribute__((__section__(".cfg")))
 Cfg cfg = cfgdata;
 
-int throt, erpt, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
+int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, flipdir, beacon, dshotext;
 volatile uint32_t tick;
 
-static int step, sine, sync, period, pbuf[6];
-static char prep, reverse, ready;
+static int step, sine, sync, ival;
+static char prep, accl, reverse, ready;
 
 /*
 6-step commutation sequence:
@@ -119,12 +119,13 @@ static void nextstep(void) {
 	if (code < 1 || code > 6) reset(); // Invalid Hall sensor code
 	step = map[code - 1];
 #endif
+	static const char seq[] = {0x35, 0x19, 0x2b, 0x32, 0x1e, 0x2c}; // Commutation sequence
+	static int buf[6];
 	if (reverse) {
 		if (--step < 1) step = 6;
 	} else {
 		if (++step > 6) step = 1;
 	}
-	static const char seq[] = {0x35, 0x19, 0x2b, 0x32, 0x1e, 0x2c}; // Commutation sequence
 	int x = seq[step - 1];
 	int m = x >> 3; // Energized phase mask
 	int p = x & m; // Positive phase
@@ -175,21 +176,31 @@ static void nextstep(void) {
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
 	TIM1_CCER = er;
-	pbuf[step - 1] = period;
-	if (sync >= 6) erpt = (pbuf[0] + pbuf[1] + pbuf[2] + pbuf[3] + pbuf[4] + pbuf[5]) >> 1; // Electrical revolution period (us)
+	buf[step - 1] = ival;
+	if (sync == 6) ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> 1; // Electrical revolution time (us)
 #ifndef SENSORED
-	static int pcc;
-	if ((step & 1) ^ reverse) cc |= 4; // BEMF rising
+	static int pcc, a, b;
 	compctl(pcc);
-	pcc = cc;
-	if (erpt < 400) { // 150K+ ERPM
-		TIM1_CCR4 = IFTIM_ICF + 8;
+	pcc = (step & 1) ^ reverse ? cc | 4 : cc;
+	if (ival > 800) {
+		a = 800;
+		b = 0;
+	} else if (++b == 6) {
+		if (a > ival * 3 >> 1) { // Desync
+			TIM_DIER(IFTIM) = TIM_DIER_UIE;
+			return;
+		}
+		a = ival;
+		b = 0;
+	}
+	if (ertm < 1000) { // 60K+ ERPM
+		TIM1_CCR4 = 0;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
-	} else if (erpt < 2000) { // 30K+ ERPM
-		TIM1_CCR4 = (IFTIM_ICF << 1) + 8;
+	} else if (ertm < 2000) { // 30K+ ERPM
+		TIM1_CCR4 = 0;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS | TIM_CR1_CKD_CK_INT_MUL_2;
-	} else { // Minimum PWM frequency range
-		TIM1_CCR4 = (IFTIM_ICF << 2) + 8;
+	} else { // Minimum PWM frequency
+		TIM1_CCR4 = IFTIM_ICF << 2;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS | TIM_CR1_CKD_CK_INT_MUL_4;
 	}
 	TIM_SR(IFTIM) = 0; // Clear BEMF events before enabling interrupts
@@ -212,7 +223,7 @@ void tim1_com_isr(void) {
 #ifdef SENSORED
 void iftim_isr(void) { // Any change on Hall sensor inputs
 	if (!(TIM_DIER(IFTIM) & TIM_DIER_CC1IE)) return;
-	period = (period * 3 + TIM_CCR1(IFTIM)) >> 2;
+	ival = (ival * 3 + TIM_CCR1(IFTIM)) >> 2;
 	if (sync < 6) ++sync;
 }
 #else
@@ -221,28 +232,23 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int sr = TIM_SR(IFTIM);
 	if ((er & TIM_DIER_UIE) && (sr & TIM_SR_UIF)) { // Timeout
 		TIM_SR(IFTIM) = ~TIM_SR_UIF;
-	desync:
-		TIM_DIER(IFTIM) = TIM_DIER_UIE;
+		TIM_DIER(IFTIM) = 0;
 		sync = 0;
-		erpt = 100000000;
-		period = 10000;
+		accl = 0;
+		ival = 10000;
+		ertm = 100000000;
 		return;
 	}
 	if (!(er & IFTIM_ICE)) return;
-	int t = IFTIM_ICR;
-	if (t < (period >> 1)) { // Possible desync
-		if (t < 150 || sync < 6) return;
-		sync = 6;
-		return;
-	}
-	period = (period * 3 + t) >> 2; // Blend time since last zero-crossing into commutation period
-	if (sync < 60) { // Check for desync
-		if (period < 150) goto desync;
-		++sync;
-	}
-	IFTIM_OCR = (period >> 1) - (period * cfg.timing >> 4); // Commutation delay
+	int t = IFTIM_ICR; // Time since last zero-crossing
+	if (t < ival >> 1) return;
+	int u = ival * 3;
+	accl = t < u >> 2 && sync == 6; // Rapid acceleration
+	ival = (t + u) >> 2; // Commutation interval
+	IFTIM_OCR = ((ival >> 1) - (ival * cfg.timing >> 4)) >> accl; // Commutation delay
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_DIER(IFTIM) = 0;
+	if (sync < 6) ++sync;
 }
 #endif
 
@@ -310,7 +316,7 @@ void pend_sv_handler(void) {
 
 static void beep(void) {
 	static const char *const beacons[] = {"EG", "FA", "GB", "AB#", "aDGE"};
-	static const char *const values[] = {"a4", "C2", "C2D2", "C2D2E2", "C2D2E2F2", "GAGAG2", "GAGAG2F2", "GAGAG2F2E2", "GAGAG2F2E2D2", "GAGAG2F2E2D2C2", 0};
+	static const char *const values[] = {"c6", "C2", "D2C2", "E2D2C2", "F#2E2D2C2", "G#A#G#A#G#2", "G#A#G#A#F#2G#2", "G#A#G#A#E2F#2G#2", "G#A#G#A#D2E2F#2G#2", "G#A#G#A#C2D2E2F#2G#2", 0};
 	if (beacon) {
 		playmusic(beacons[beacon - 1], cfg.beacon);
 		beacon = 0;
@@ -320,7 +326,7 @@ static void beep(void) {
 	while (i[n++] = x % 10, x /= 10);
 	if (vol < 25) vol = 25;
 	while (n--) {
-		if (x++) playmusic("_2", vol);
+		if (x++) playmusic("_4", vol);
 		playmusic(values[i[n]], vol);
 	}
 	beepval = -1;
@@ -371,7 +377,7 @@ void main(void) {
 		WWDG_CR = 0xff;
 		__WFI();
 	}
-	if (!cells) cells = (volt + 429) / 430; // Assume maximum 4.3V per battery cell
+	if (!cells) cells = (volt + 439) / 440; // Assume maximum 4.4V per battery cell
 #endif
 #ifndef ANALOG
 	if (!(RCC_CSR & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
@@ -396,11 +402,11 @@ void main(void) {
 		TIM14_CR1 = 0;
 		playmusic("GC", cfg.volume); // Arming beep
 	}
+#endif
 	laststep();
 	TIM1_EGR = TIM_EGR_COMG;
-#endif
 	PID curpid = {.Kp = 400, .Ki = 0, .Kd = 600};
-	for (int curduty = 0, running = 0, braking = 2, choke = 0, n = 0, v = 0;;) {
+	for (int curduty = 0, running = 0, braking = 2, choke = 0, r = 0, n = 0, v = 0;;) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		WWDG_CR = 0xff;
 		__WFI();
@@ -434,9 +440,9 @@ void main(void) {
 #ifndef SENSORED
 		if (running && sine) { // Sine startup
 			if (!newduty) {
-				if (!erpt) goto skip_duty;
-				erpt = sine * 180;
-				erpm = 60000000 / erpt;
+				if (!ertm) goto skip_duty;
+				ertm = sine * 180;
+				erpm = 60000000 / ertm;
 				goto skip_duty;
 			}
 			__disable_irq();
@@ -450,28 +456,28 @@ void main(void) {
 			sine = 0;
 			prep = 0;
 			sync = 0;
-			period = 10000;
+			accl = 0;
+			ival = 10000;
 			nextstep();
 			__enable_irq();
 		}
 #endif
 		int arr = CLK_KHZ / cfg.freq_min;
 		if (running) {
-			if (erpt) { // Variable PWM frequency
-				erpm = 60000000 / erpt;
-				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max);
+			if (ertm) {
+				erpm = 60000000 / ertm;
+				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max); // Variable PWM frequency
 			}
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (sync < 6) { // Power cap during spin-up
 				int maxduty = cfg.duty_spup * 20;
 				if (newduty > maxduty) newduty = maxduty;
 			}
-			int ramp = cfg.duty_ramp;
-			if (!ramp || curduty >= newduty) curduty = newduty;
-			else { // Acceleration ramping
-				curduty += ramp;
-				if (curduty > newduty) curduty = newduty;
-			}
+			int a = accl ? 0 : cfg.duty_ramp;
+			int b = a / 5;
+			if (r < a % 5) ++b;
+			if (++r == 5) r = 0;
+			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration ramping
 		}
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
@@ -483,8 +489,8 @@ void main(void) {
 	skip_duty:
 		if (running && !step) { // Start motor
 			__disable_irq();
-			erpt = 100000000;
-			period = 10000;
+			ival = 10000;
+			ertm = 100000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 			TIM1_DIER |= TIM_DIER_COMIE;
@@ -513,10 +519,9 @@ void main(void) {
 			sine = 0;
 			prep = 0;
 			sync = 0;
-			erpt = 0;
+			accl = 0;
+			ertm = 0;
 			erpm = 0;
-			period = 0;
-			memset(&pbuf, 0, sizeof pbuf);
 			__enable_irq();
 		}
 		beep();

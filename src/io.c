@@ -279,7 +279,7 @@ static void dshotdma(void) {
 		DMA1_CNDTR(IOTIM_DMA) = 23;
 		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_8BIT;
 		if (!dshotval) {
-			int a = erpt ? erpt : 65408;
+			int a = ertm ? ertm : 65408;
 			int b = 0;
 			if (a > 65408) a = 65408;
 			while (a > 511) a >>= 1, ++b;
@@ -314,7 +314,7 @@ static void dshotdma(void) {
 		cmd = 0;
 		return;
 	}
-	if (!tlm || erpt) return; // Telemetry bit must be set, motor must be stopped
+	if (!tlm || ertm) return; // Telemetry bit must be set, motor must be stopped
 	if (cmd != x) {
 		cmd = x;
 		cnt = 0;
@@ -402,23 +402,27 @@ static void dshotdma(void) {
 #endif
 		case 40: // Increase timing
 			if (cnt != 6) break;
-			if (cfg.timing < 7) ++cfg.timing;
-			beepval = cfg.timing;
+			if ((x = cfg.timing) < 7) ++x;
+			beepval = cfg.timing = x;
 			break;
 		case 41: // Decrease timing
 			if (cnt != 6) break;
-			if (cfg.timing > 1) --cfg.timing;
-			beepval = cfg.timing;
+			if ((x = cfg.timing) > 1) --x;
+			beepval = cfg.timing = x;
 			break;
 		case 42: // Increase acceleration ramping
 			if (cnt != 6) break;
-			if (cfg.duty_ramp < 10) ++cfg.duty_ramp;
-			beepval = cfg.duty_ramp;
+			if ((x = cfg.duty_ramp) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
+			beepval = cfg.duty_ramp = x;
 			break;
 		case 43: // Decrease acceleration ramping
 			if (cnt != 6) break;
-			if (cfg.duty_ramp > 0) --cfg.duty_ramp;
-			beepval = cfg.duty_ramp;
+			if ((x = cfg.duty_ramp) > 1 && --x > 10) x = x / 5 * 5;
+			beepval = cfg.duty_ramp = x;
+			break;
+		case 47: // Reset settings
+			if (cnt != 6) break;
+			beepval = resetcfg();
 			break;
 	}
 }

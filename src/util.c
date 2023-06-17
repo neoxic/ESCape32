@@ -70,8 +70,8 @@ void checkcfg(void) {
 	cfg.freq_max = clamp(cfg.freq_max, cfg.freq_min, 96);
 	cfg.duty_min = clamp(cfg.duty_min, 1, 100);
 	cfg.duty_max = clamp(cfg.duty_max, cfg.duty_min, 100);
-	cfg.duty_spup = clamp(cfg.duty_spup, 1, 100);
-	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 10);
+	cfg.duty_spup = clamp(cfg.duty_spup, 1, 25);
+	cfg.duty_ramp = clamp(cfg.duty_ramp, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, 2);
 	cfg.throt_cal = !!cfg.throt_cal;
@@ -95,7 +95,7 @@ void checkcfg(void) {
 	cfg.prot_temp = cfg.prot_temp ? clamp(cfg.prot_temp, 60, 140) : 0;
 #if SENS_CNT >= 1
 	cfg.prot_volt = cfg.prot_volt ? clamp(cfg.prot_volt, 28, 38) : 0;
-	cfg.prot_cells = clamp(cfg.prot_cells, 0, 12);
+	cfg.prot_cells = clamp(cfg.prot_cells, 0, 16);
 #else
 	cfg.prot_volt = 0;
 	cfg.prot_cells = 0;
@@ -118,7 +118,7 @@ void checkcfg(void) {
 }
 
 int savecfg(void) {
-	if (erpt) return 0;
+	if (ertm) return 0;
 	__disable_irq();
 	WWDG_CFR = ~WWDG_CFR_EWI; // Slow down watchdog
 	WWDG_CR = 0xff;
@@ -161,10 +161,17 @@ int savecfg(void) {
 	return !memcmp(_cfg, _cfg_start, _cfg_end - _cfg_start);
 }
 
+int resetcfg(void) {
+	__disable_irq();
+	memcpy(&cfg, &cfgdata, sizeof cfgdata);
+	__enable_irq();
+	return savecfg();
+}
+
 int playmusic(const char *str, int vol) {
 	static const uint16_t arr[] = {30575, 28859, 27240, 25713, 24268, 22906, 21621, 20407, 19261, 18181, 17160, 16196, 15287};
 	static char flag;
-	if (!vol || erpt || flag) return 0;
+	if (!vol || ertm || flag) return 0;
 	flag = 1;
 	vol <<= 1;
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1;

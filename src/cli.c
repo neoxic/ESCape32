@@ -114,7 +114,7 @@ static int setbeepval(int val) {
 }
 
 int execcmd(char *buf) {
-	static const char *const cmds[] = {"help", "info", "show", "get", "set", "reset", "save", "play", "throt", "beep", 0};
+	static const char *const cmds[] = {"help", "info", "show", "get", "set", "save", "reset", "play", "throt", "beep", 0};
 	static const char *const keys[] = {
 #define XX(idx, type, key) #key,
 CFG_MAP(XX)
@@ -133,8 +133,8 @@ CFG_MAP(XX)
 				"show\n"
 				"get <param>\n"
 				"set <param> <value>\n"
-				"reset\n"
 				"save\n"
+				"reset\n"
 				"play <music> [<volume>]\n"
 				"throt <value>\n"
 				"beep\n"
@@ -143,7 +143,7 @@ CFG_MAP(XX)
 		case 1: // 'info'
 			if (narg != 1) goto error;
 			appendstr(&pos, "ESCape32 rev");
-			appendval(&pos, cfg.revision);
+			appendval(&pos, setbeepval(cfg.revision));
 			appendstr(&pos, " [");
 			appendstr(&pos, cfg.target_name);
 			appendstr(&pos, "]\nTemp: ");
@@ -195,15 +195,11 @@ CFG_MAP(XX)
 					goto error;
 			}
 			break;
-		case 5: // 'reset'
-			if (narg != 1) goto error;
-			__disable_irq();
-			memcpy(&cfg, &cfgdata, sizeof cfgdata);
-			__enable_irq();
-			setbeepval(1);
-			break;
-		case 6: // 'save'
+		case 5: // 'save'
 			if (narg != 1 || !setbeepval(savecfg())) goto error;
+			break;
+		case 6: // 'reset'
+			if (narg != 1 || !setbeepval(resetcfg())) goto error;
 			break;
 		case 7: // 'play <music> [<volume>]'
 			if (narg < 2 || narg > 3) goto error;

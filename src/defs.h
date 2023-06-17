@@ -148,10 +148,10 @@
 #define DUTY_MAX 100
 #endif
 #ifndef DUTY_SPUP
-#define DUTY_SPUP 15
+#define DUTY_SPUP 10
 #endif
 #ifndef DUTY_RAMP
-#define DUTY_RAMP 10
+#define DUTY_RAMP 25
 #endif
 #ifndef DUTY_DRAG
 #define DUTY_DRAG 0
