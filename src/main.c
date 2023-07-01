@@ -138,7 +138,7 @@ static void nextstep(void) {
 	int er = TIM_CCER_CC4E;
 #endif
 #ifndef SENSORED
-	int cc = 0;
+	int cc = (step & 1) ^ reverse ? 4 : 0; // BEMF rising/falling
 #endif
 	// Phase A
 	if (p & 1) {
@@ -149,7 +149,7 @@ static void nextstep(void) {
 		er |= TIM_CCER_CC1NE;
 	}
 #ifndef SENSORED
-	else cc = 1;
+	else cc |= 1;
 #endif
 	// Phase B
 	if (p & 2) {
@@ -160,7 +160,7 @@ static void nextstep(void) {
 		er |= TIM_CCER_CC2NE;
 	}
 #ifndef SENSORED
-	else cc = 2;
+	else cc |= 2;
 #endif
 	// Phase C
 	if (p & 4) {
@@ -171,7 +171,7 @@ static void nextstep(void) {
 		er |= TIM_CCER_CC3NE;
 	}
 #ifndef SENSORED
-	else cc = 3;
+	else cc |= 3;
 #endif
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
@@ -181,7 +181,7 @@ static void nextstep(void) {
 #ifndef SENSORED
 	static int pcc, a, b;
 	compctl(pcc);
-	pcc = (step & 1) ^ reverse ? cc | 4 : cc;
+	pcc = cc;
 	if (ival > 800) {
 		a = 800;
 		b = 0;
