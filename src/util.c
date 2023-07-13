@@ -174,12 +174,12 @@ int playmusic(const char *str, int vol) {
 	if (!vol || ertm || flag) return 0;
 	flag = 1;
 	vol <<= 1;
-	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1;
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_LOW;
+	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
 #ifdef INVERTED_HIGH
-	TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC3NE | TIM_CCER_CC1P;
+	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC3E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
 #else
-	TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC3NE;
+	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC3E;
 #endif
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 8MHz
 	for (int a, b; (a = *str++);) {
@@ -191,7 +191,7 @@ int playmusic(const char *str, int vol) {
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
 		TIM1_ARR = arr[a] >> b; // Frequency
-		TIM1_CCR1 = vol; // Volume
+		TIM1_CCR3 = vol; // Volume
 	set:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		a = *str;
@@ -204,9 +204,8 @@ int playmusic(const char *str, int vol) {
 		}
 		TIM1_CCR1 = 0; // Preload silence
 	}
-	TIM1_CCMR1 = 0;
-	TIM1_CCMR2 = 0;
-	TIM1_CCER = 0;
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
 	TIM1_PSC = 0;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;

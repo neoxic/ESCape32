@@ -17,6 +17,16 @@
 
 #pragma once
 
+#if DEAD_TIME < 128
+#define TIM_DTG DEAD_TIME
+#elif DEAD_TIME < 256
+#define TIM_DTG (((DEAD_TIME - 128) >> 1) | 0x80)
+#elif DEAD_TIME < 512
+#define TIM_DTG (((DEAD_TIME - 256) >> 3) | 0xc0)
+#elif DEAD_TIME < 1024
+#define TIM_DTG (((DEAD_TIME - 512) >> 4) | 0xe0)
+#endif
+
 #ifndef COMP_MAP
 #elif COMP_MAP == 123
 #define COMP_IN1 1

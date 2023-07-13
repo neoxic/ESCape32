@@ -103,9 +103,9 @@ static void nextstep(void) {
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_PWM1;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC3M_PWM1;
 #ifdef INVERTED_HIGH
-		TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC2NE | TIM_CCER_CC3E | TIM_CCER_CC3NE | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+		TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
 #else
-		TIM1_CCER = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC2NE | TIM_CCER_CC3E | TIM_CCER_CC3NE;
+		TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
 #endif
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		TIM_DIER(IFTIM) = 0;
@@ -130,6 +130,7 @@ static void nextstep(void) {
 	int m = x >> 3; // Energized phase mask
 	int p = x & m; // Positive phase
 	int n = ~x & m; // Negative phase
+	int z = (step & 1) ^ reverse; // BEMF rising
 	int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 	int m2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_PWM1;
 #ifdef INVERTED_HIGH
@@ -138,41 +139,56 @@ static void nextstep(void) {
 	int er = TIM_CCER_CC4E;
 #endif
 #ifndef SENSORED
-	int cc = (step & 1) ^ reverse ? 4 : 0; // BEMF rising/falling
+	int cc = z ? 4 : 0;
 #endif
 	// Phase A
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC1E | TIM_CCER_CC1NE : TIM_CCER_CC1E;
+		er |= cfg.damp ? TIM_CCER_CC1NE | TIM_CCER_CC1E : TIM_CCER_CC1E;
 	} else if (n & 1) {
 		m1 |= TIM_CCMR1_OC1M_FORCE_HIGH;
 		er |= TIM_CCER_CC1NE;
-	}
+	} else {
+		if (!z) {
+			m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
+			er |= TIM_CCER_CC1NE;
+		}
 #ifndef SENSORED
-	else cc |= 1;
+		cc |= 1;
 #endif
+	}
 	// Phase B
 	if (p & 2) {
 		m1 |= TIM_CCMR1_OC2M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC2E | TIM_CCER_CC2NE : TIM_CCER_CC2E;
+		er |= cfg.damp ? TIM_CCER_CC2NE | TIM_CCER_CC2E : TIM_CCER_CC2E;
 	} else if (n & 2) {
 		m1 |= TIM_CCMR1_OC2M_FORCE_HIGH;
 		er |= TIM_CCER_CC2NE;
-	}
+	} else {
+		if (!z) {
+			m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
+			er |= TIM_CCER_CC2NE;
+		}
 #ifndef SENSORED
-	else cc |= 2;
+		cc |= 2;
 #endif
+	}
 	// Phase C
 	if (p & 4) {
 		m2 |= TIM_CCMR2_OC3M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC3E | TIM_CCER_CC3NE : TIM_CCER_CC3E;
+		er |= cfg.damp ? TIM_CCER_CC3NE | TIM_CCER_CC3E : TIM_CCER_CC3E;
 	} else if (n & 4) {
 		m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
 		er |= TIM_CCER_CC3NE;
-	}
+	} else {
+		if (!z) {
+			m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+			er |= TIM_CCER_CC3NE;
+		}
 #ifndef SENSORED
-	else cc |= 3;
+		cc |= 3;
 #endif
+	}
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
 	TIM1_CCER = er;
@@ -211,7 +227,11 @@ static void nextstep(void) {
 static void laststep(void) {
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC3M_PWM1;
+#ifdef INVERTED_HIGH
+	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#else
 	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+#endif
 }
 
 void tim1_com_isr(void) {
@@ -345,7 +365,7 @@ void main(void) {
 	analog = ANALOG_MIN != ANALOG_MAX;
 #endif
 
-	TIM1_BDTR = (DEAD_TIME & TIM_BDTR_DTG_MASK) | TIM_BDTR_MOE;
+	TIM1_BDTR = TIM_DTG | TIM_BDTR_OSSR | TIM_BDTR_MOE;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
 #ifdef STM32G0
