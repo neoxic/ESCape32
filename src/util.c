@@ -197,12 +197,12 @@ int playmusic(const char *str, int vol) {
 		a = *str;
 		if (a >= '1' && a <= '8') a -= '0', ++str;
 		else a = 1;
-		for (uint32_t t = tick + a * 125; t != tick;) { // Duration 125*X ms
+		for (uint32_t t = tickms + a * 125; t != tickms;) { // Duration 125*X ms
 			if (TIM14_CR1 & TIM_CR1_CEN) TIM14_EGR = TIM_EGR_UG; // Reset arming timeout
 			IWDG_KR = IWDG_KR_RESET;
 			WWDG_CR = 0xff;
 		}
-		TIM1_CCR1 = 0; // Preload silence
+		TIM1_CCR3 = 0; // Preload silence
 	}
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;

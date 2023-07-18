@@ -30,8 +30,8 @@
 #define ADC1_DR ADC_DR(ADC1)
 #define ADC1_CCR ADC_CCR(ADC1)
 
-static uint16_t buf[10];
 static char len, ain;
+static uint16_t buf[10];
 
 void init(void) {
 	RCC_APBRSTR2 = -1;

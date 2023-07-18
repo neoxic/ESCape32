@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 4
+#define REVISION 5
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -42,7 +42,7 @@ const Cfg cfgdata = {
 	.throt_min = THROT_MIN,     // Minimum throttle (us)
 	.throt_mid = THROT_MID,     // Middle throttle (us)
 	.throt_max = THROT_MAX,     // Maximum throttle (us)
-	.input_mode = INPUT_MODE,   // Input mode (0 - servo/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS)
+	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS)
 	.input_chid = INPUT_CHID,   // iBUS/SBUS channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS]
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port)
 	.telem_phid = TELEM_PHID,   // S.Port physical ID [0 - off, 1..28]
@@ -51,7 +51,7 @@ const Cfg cfgdata = {
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
 	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..12]
 	.prot_curr = PROT_CURR,     // Maximum current (A) [0..255]
-	.music = "dfa#",            // Startup music
+	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
 	.led = LED,                 // LED bits
@@ -62,10 +62,20 @@ Cfg cfg = cfgdata;
 
 int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, flipdir, beacon, dshotext;
-volatile uint32_t tick;
+volatile uint32_t tickms;
 
 static int step, sine, sync, ival;
-static char prep, accl, reverse, ready;
+static char prep, accl, tick, reverse, ready;
+
+#ifdef ANALOG
+#define reset() { \
+	__disable_irq(); \
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW; \
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW; \
+	TIM1_EGR = TIM_EGR_COMG; \
+	for (;;) WWDG_CR = 0xff; \
+}
+#endif
 
 /*
 6-step commutation sequence:
@@ -141,7 +151,6 @@ static void nextstep(void) {
 #ifndef SENSORED
 	int cc = z ? 4 : 0;
 #endif
-	// Phase A
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
 		er |= cfg.damp ? TIM_CCER_CC1NE | TIM_CCER_CC1E : TIM_CCER_CC1E;
@@ -157,7 +166,6 @@ static void nextstep(void) {
 		cc |= 1;
 #endif
 	}
-	// Phase B
 	if (p & 2) {
 		m1 |= TIM_CCMR1_OC2M_PWM1;
 		er |= cfg.damp ? TIM_CCER_CC2NE | TIM_CCER_CC2E : TIM_CCER_CC2E;
@@ -173,7 +181,6 @@ static void nextstep(void) {
 		cc |= 2;
 #endif
 	}
-	// Phase C
 	if (p & 4) {
 		m2 |= TIM_CCMR2_OC3M_PWM1;
 		er |= cfg.damp ? TIM_CCER_CC3NE | TIM_CCER_CC3E : TIM_CCER_CC3E;
@@ -198,11 +205,11 @@ static void nextstep(void) {
 	static int pcc, a, b;
 	compctl(pcc);
 	pcc = cc;
-	if (ival > 800) {
-		a = 800;
+	if (ival > 1000) {
+		a = 1000;
 		b = 0;
 	} else if (++b == 6) {
-		if (a > ival * 3 >> 1) { // Desync
+		if (a - ival > ival >> 1) { // Desync
 			TIM_DIER(IFTIM) = TIM_DIER_UIE;
 			return;
 		}
@@ -287,24 +294,22 @@ void adc_data(int t, int v, int c, int x) {
 }
 
 void sys_tick_handler(void) {
-	static int n;
 	SCB_ICSR = SCB_ICSR_PENDSVSET; // Continue with low priority
-	if (++n < 10) return; // 10kHz -> 1kHz
-	++tick;
-	n = 0;
+	SCB_SCR = 0; // Resume main loop
+	if (++tick & 15) return; // 16kHz -> 1kHz
+	++tickms;
 }
 
 void pend_sv_handler(void) {
-	static int n, d, i, m, q;
-	static char led = -1;
-	SCB_SCR = 0; // Resume main loop
+	static char d, led = -1;
+	static int i, n, q;
 	if (telreq && !cfg.telem_mode) { // Telemetry request
 		sendtelem();
 		telreq = 0;
 	}
-	if (++n < 10) return; // 10kHz -> 1kHz
+	if (tick & 15) return; // 16kHz -> 1kHz
 	adc_trig();
-	if (!(tick & 31)) { // Telemetry every 32ms
+	if (!(tickms & 31)) { // Telemetry every 32ms
 		if (dshotext) {
 			int v = 0;
 			switch (++d) {
@@ -327,11 +332,10 @@ void pend_sv_handler(void) {
 	}
 	if (led != cfg.led) ledctl(led = cfg.led); // Update LEDs
 	i += curr;
-	n = 0;
-	if (++m < 1000) return; // 1ms -> 1s
+	if (++n < 1000) return; // 1ms -> 1s
 	csum = (q += i / 1000) / 360; // mAh
 	i = 0;
-	m = 0;
+	n = 0;
 }
 
 static void beep(void) {
@@ -387,7 +391,7 @@ void main(void) {
 #endif
 
 	nvic_set_priority(NVIC_PENDSV_IRQ, 0x80);
-	STK_RVR = CLK_KHZ / 10 - 1; // 10kHz
+	STK_RVR = CLK_KHZ / 16 - 1; // 16kHz
 	STK_CVR = 0;
 	STK_CSR = STK_CSR_ENABLE | STK_CSR_TICKINT | STK_CSR_CLKSOURCE_AHB;
 
@@ -400,11 +404,13 @@ void main(void) {
 	if (!cells) cells = (volt + 439) / 440; // Assume maximum 4.4V per battery cell
 #endif
 #ifndef ANALOG
-	if (!(RCC_CSR & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
-		playmusic(cfg.music, cfg.volume); // Play startup music
+	int csr = RCC_CSR;
+	RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
+	if (!(csr & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
+		playmusic(cfg.music, cfg.volume);
 		if (cfg.prot_volt) for (int i = 0; i < cells; ++i) playmusic("_2D", cfg.volume); // Number of battery cells
 	}
-	if (cfg.arm) {
+	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
 		TIM14_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
 		TIM14_ARR = 2499; // 250ms
 		TIM14_CR1 = TIM_CR1_URS;
@@ -420,39 +426,39 @@ void main(void) {
 		}
 		throt = 0;
 		TIM14_CR1 = 0;
-		playmusic("GC", cfg.volume); // Arming beep
+		playmusic("GC", cfg.volume);
 	}
 #endif
 	laststep();
 	TIM1_EGR = TIM_EGR_COMG;
 	PID curpid = {.Kp = 400, .Ki = 0, .Kd = 600};
-	for (int curduty = 0, running = 0, braking = 2, choke = 0, r = 0, n = 0, v = 0;;) {
+	for (int curduty = 0, running = 0, braking = 2, choke = 0, r = 0, v = 0;;) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		WWDG_CR = 0xff;
 		__WFI();
-		int throtval = throt;
+		int input = throt;
 		int range = cfg.sine_range * 20;
 		int margin = range && sine ? 20 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
-		if (throtval > 0) { // Forward throttle
-			if (range + margin < throtval) newduty = scale(throtval, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(throtval, 0, range, 1000, 145);
+		if (input > 0) { // Forward
+			if (range + margin < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+			else sine = scale(input, 0, range, 1000, 145);
 			reverse = cfg.revdir ^ flipdir;
 			running = 1;
 			braking = 0;
-		} else if (throtval < 0) { // Reverse throttle
+		} else if (input < 0) { // Reverse
 			if (cfg.throt_mode == 2 && braking != 2) { // Proportional brake
-				curduty = scale(-throtval, 0, 2000, cfg.duty_drag * 20, 2000);
+				curduty = scale(-input, 0, 2000, cfg.duty_drag * 20, 2000);
 				running = 0;
 				braking = 1;
 			} else {
-				if (range + margin < -throtval) newduty = scale(-throtval, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-				else sine = scale(-throtval, 0, range, 1000, 145);
+				if (range + margin < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+				else sine = scale(-input, 0, range, 1000, 145);
 				reverse = !cfg.revdir ^ flipdir;
 				running = 1;
 			}
-		} else { // Neutral throttle
+		} else { // Neutral
 			curduty = cfg.duty_drag * 20;
 			running = 0;
 			if (braking == 1) braking = 2; // Reverse after braking
@@ -494,9 +500,9 @@ void main(void) {
 				if (newduty > maxduty) newduty = maxduty;
 			}
 			int a = accl ? 0 : cfg.duty_ramp;
-			int b = a / 5;
-			if (r < a % 5) ++b;
-			if (++r == 5) r = 0;
+			int b = a >> 3;
+			if (r < (a & 7)) ++b;
+			if (++r == 8) r = 0;
 			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration ramping
 		}
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr);
@@ -545,12 +551,11 @@ void main(void) {
 			__enable_irq();
 		}
 		beep();
-		if (++n < 10) continue; // 10kHz -> 1kHz
+		if (tick & 15) continue; // 16kHz -> 1kHz
 		if (volt >= cfg.prot_volt * cells * 10) v = 0;
 		else if (++v == 3000) reset(); // Low voltage cutoff after 3s
 		int t = cfg.prot_temp ? clamp((temp - cfg.prot_temp) * 100, 0, 1500) : 0; // 25% power cap @ 15C above threshold
 		int u = cfg.prot_curr ? calcpid(&curpid, curr, cfg.prot_curr * 100) >> 10 : 0; // Current PID control
 		choke = clamp(choke + u, t, 2000);
-		n = 0;
 	}
 }

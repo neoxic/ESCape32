@@ -29,7 +29,7 @@ static int sportdma(void);
 
 static int (*iodma)(void);
 
-static char iobuf[16], rxlen;
+static char rxlen, iobuf[16];
 
 void inittelem(void) {
 	USART1_BRR = CLK_CNT(115200);

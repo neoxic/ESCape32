@@ -18,8 +18,8 @@
 #include <libopencm3/stm32/adc.h>
 #include "common.h"
 
-static uint16_t buf[3];
 static char len, ain;
+static uint16_t buf[3];
 
 void init(void) {
 	RCC_APB2RSTR = -1;

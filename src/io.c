@@ -44,7 +44,8 @@ static char rxlen;
 static void (*ioirq)(void);
 static void (*iodma)(void);
 
-static char iobuf[1024], dshotinv;
+static char dshotinv, iobuf[1024];
+static uint16_t dshotarr1, dshotarr2, dshotbuf[23];
 
 void initio(void) {
 	ioirq = entryirq;
@@ -61,7 +62,7 @@ void initio(void) {
 }
 
 static void entryirq(void) {
-	static int c, n, u = 5;
+	static int n, c, d;
 	if (TIM_SR(IOTIM) & TIM_SR_UIF) { // Timeout ~66ms
 		TIM_SR(IOTIM) = ~TIM_SR_UIF;
 		if (!IOTIM_IDR) { // Low level
@@ -129,34 +130,43 @@ static void entryirq(void) {
 #endif
 	int t = TIM_CCR1(IOTIM); // Time between two rising edges
 	if (!n++) return; // First capture is always invalid
-	if (t >= 2400) { // Servo PWM
-		ioirq = calibirq;
-		calibirq();
+	if (TIM_PSC(IOTIM)) {
+		if (t > 2000) { // Servo/Oneshot125
+			ioirq = calibirq;
+			calibirq();
+			return;
+		}
+		TIM_PSC(IOTIM) = TIM_PSC(IOTIM) == CLK_MHZ - 1 ? CLK_MHZ / 8 - 1 : 0;
+		TIM_EGR(IOTIM) = TIM_EGR_UG;
+		n = 0;
 		return;
 	}
-	if (t >= 5 || n <= 4) return;
-	if (u != t) {
-		u = t;
+	int m = 3;
+	while (t >= CLK_CNT(800000)) t >>= 1, --m;
+	if (d != m) {
+		d = m;
 		n = 1;
 		return;
 	}
+	if (m < 1 || n < 4) return;
 	ioirq = dshotirq;
 	iodma = dshotdma;
+	dshotarr1 = CLK_CNT(m * 150000) - 1;
+	dshotarr2 = CLK_CNT(m * 375000) - 1;
 	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCER(IOTIM) = 0;
 	TIM_DIER(IOTIM) = TIM_DIER_UIE;
-	TIM_PSC(IOTIM) = u >= 2; // 0 - DSHOT 600, 1 - DSHOT 300
-	TIM_ARR(IOTIM) = CLK_CNT(300000) - 1; // Minimum idle time
+	TIM_ARR(IOTIM) = dshotarr1; // Frame reset time (two bits)
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	DMA1_CPAR(IOTIM_DMA) = (uint32_t)&TIM_CCR1(IOTIM);
-	DMA1_CMAR(IOTIM_DMA) = (uint32_t)iobuf;
+	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf;
 }
 
 static void calibirq(void) { // Align pulse period to the nearest millisecond via HSI trimming within 6.25% margin
 	static int n, q, x, y;
 	if (!cfg.throt_cal) goto done;
 	int p = TIM_CCR1(IOTIM); // Pulse period
-	if (p < 2400) return; // Invalid signal
+	if (p < 2000) return; // Invalid signal
 	IWDG_KR = IWDG_KR_RESET;
 	q += p - ((p + 500) / 1000) * 1000; // Cumulative error
 	if (++n & 3) return;
@@ -189,7 +199,7 @@ static void servoval(int x) {
 static void servoirq(void) {
 	int p = TIM_CCR1(IOTIM); // Pulse period
 	int w = TIM_CCR2(IOTIM); // Pulse width
-	if (p < 2400) return; // Invalid signal
+	if (p < 2000) return; // Invalid signal
 	if (w >= 28 && w <= 32) { // Telemetry request
 		telreq = 1;
 		IWDG_KR = IWDG_KR_RESET;
@@ -213,7 +223,7 @@ static void dshotirq(void) {
 		}
 	}
 	DMA1_CNDTR(IOTIM_DMA) = 16;
-	DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_8BIT;
+	DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 	TIM_ARR(IOTIM) = -1;
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE;
@@ -245,7 +255,7 @@ static void dshotdma(void) {
 #endif
 		DMA1_CCR(IOTIM_DMA) = 0;
 		DMA1_CNDTR(IOTIM_DMA) = 16;
-		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_8BIT;
+		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		TIM_ARR(IOTIM) = -1;
 		TIM_EGR(IOTIM) = TIM_EGR_UG;
 		TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
@@ -255,14 +265,15 @@ static void dshotdma(void) {
 		return;
 	}
 	int x = 0;
+	int y = (dshotarr1 + 1) >> 2; // Half-bit time
 	for (int i = 0; i < 16; ++i) {
 		x <<= 1;
-		if (iobuf[i] >= CLK_CNT(1200000)) x |= 1;
+		if (dshotbuf[i] >= y) x |= 1;
 	}
 	if (dshotcrc(x, dshotinv)) { // Invalid checksum
 		DMA1_CCR(IOTIM_DMA) = 0;
 		TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
-		TIM_ARR(IOTIM) = CLK_CNT(300000) - 1; // Minimum idle time
+		TIM_ARR(IOTIM) = dshotarr1; // Frame reset time (two bits)
 		TIM_EGR(IOTIM) = TIM_EGR_UG;
 		TIM_SR(IOTIM) = ~TIM_SR_UIF;
 		TIM_DIER(IOTIM) = TIM_DIER_UIE;
@@ -277,7 +288,7 @@ static void dshotdma(void) {
 		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
 		DMA1_CCR(IOTIM_DMA) = 0;
 		DMA1_CNDTR(IOTIM_DMA) = 23;
-		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_8BIT;
+		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		if (!dshotval) {
 			int a = ertm ? ertm : 65408;
 			int b = 0;
@@ -290,18 +301,18 @@ static void dshotdma(void) {
 		for (int i = 0, j = 0; i < 16; i += 4, j += 5) b |= gcr[a >> i & 0xf] << j;
 		for (int p = -1, i = 19; i >= 0; --i) {
 			if (b >> i & 1) p = ~p;
-			iobuf[20 - i] = p;
+			dshotbuf[20 - i] = p;
 		}
-		iobuf[0] = -1;
-		iobuf[21] = 0;
-		iobuf[22] = 0;
+		dshotbuf[0] = -1;
+		dshotbuf[21] = 0;
+		dshotbuf[22] = 0;
 		__disable_irq();
-		int arr = (CLK_CNT(40000) >> TIM_PSC(IOTIM)) - TIM_CNT(IOTIM) - 1; // Calculate 25us output delay
+		int arr = CLK_CNT(33333) - TIM_CNT(IOTIM) - 1; // Calculate 30us output delay
 		if (arr < 99) arr = 99; // Sanity check
 		TIM_ARR(IOTIM) = arr; // Preload output delay
 		TIM_CCR1(IOTIM) = 0; // Preload high level
 		TIM_EGR(IOTIM) = TIM_EGR_UG; // Update registers and trigger DMA to preload the first bit
-		TIM_ARR(IOTIM) = CLK_CNT(750000) - 1; // Preload bit time
+		TIM_ARR(IOTIM) = dshotarr2; // Preload bit time
 		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output
 		__enable_irq();
 		if (!rep || !--rep) dshotval = 0;

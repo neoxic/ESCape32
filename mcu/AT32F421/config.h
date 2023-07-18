@@ -17,12 +17,12 @@
 
 #pragma once
 
-#if SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
-#define SENS_CNT 2
-#define SENS_CHAN 0x66
-#elif SENS_MAP == 0xA3 // A3 (volt)
+#if SENS_MAP == 0xA3 // A3 (volt)
 #define SENS_CNT 1
 #define SENS_CHAN 0x3
+#elif SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
+#define SENS_CNT 2
+#define SENS_CHAN 0x66
 #endif
 
 #ifndef THROT_CHAN

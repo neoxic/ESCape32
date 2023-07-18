@@ -20,8 +20,8 @@
 
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
-static uint16_t buf[5];
 static char len, ain;
+static uint16_t buf[5];
 
 void init(void) {
 	RCC_APB2RSTR = -1;

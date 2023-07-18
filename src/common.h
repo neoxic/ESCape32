@@ -98,7 +98,7 @@ extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval;
 extern char analog, telreq, flipdir, beacon, dshotext;
-extern volatile uint32_t tick;
+extern volatile uint32_t tickms;
 
 void init(void);
 void initio(void);

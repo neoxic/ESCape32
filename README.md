@@ -7,16 +7,16 @@ Firmware for 32-bit BLDC motor electronic speed controllers that aims at simplic
 Features
 --------
 
-+ Servo PWM up to 400Hz, automatic throttle calibration
-+ DSHOT 300/600, bidirectional DSHOT, extended telemetry
++ Servo PWM, Oneshot125, automatic throttle calibration
++ DSHOT 300/600/1200, bidirectional DSHOT, extended telemetry
 + Analog/serial/iBUS/SBUS input mode
 + KISS/iBUS/S.Port telemetry
 + DSHOT 3D mode, turtle mode, beacon, LED, programming
-+ Sine startup mode
++ Sine startup mode (crawler mode)
 + Proportional brake, drag brake
 + Temperature/voltage/current protection
 + Variable PWM frequency, active freewheeling
-+ Customizable sounds
++ Customizable startup music
 + Configuration via CLI using a USB-TTL adapter or Betaflight passthrough
 
 
