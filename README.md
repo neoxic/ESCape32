@@ -52,6 +52,12 @@ cd build
 make
 ```
 
+To specify an alternative root, run instead:
+
+```
+cmake -B build -D CMAKE_INSTALL_PREFIX=/path/to/libopencm3
+```
+
 To flash a particular target using an ST-LINK programmer, run:
 
 ```
