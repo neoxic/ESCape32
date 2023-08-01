@@ -6,11 +6,15 @@ set(CMAKE_C_COMPILER arm-none-eabi-gcc)
 set(CMAKE_C_FLAGS "-Os -g")
 set(CMAKE_C_FLAGS_DEBUG "-Og")
 set(OBJCOPY arm-none-eabi-objcopy)
-if(UNIX AND NOT CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT) # Use 'CMAKE_INSTALL_PREFIX' as alternative root
+if(UNIX AND NOT CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT) # Use 'CMAKE_INSTALL_PREFIX' as alternative system root
 	set(CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX})
 	include(GNUInstallDirs)
 	include_directories(${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
 	link_directories(${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+endif()
+if(LIBOPENCM3_DIR)
+	include_directories(${LIBOPENCM3_DIR}/include)
+	link_directories(${LIBOPENCM3_DIR}/lib)
 endif()
 find_program(FLASH st-flash)
 add_compile_options(-ffreestanding -ffunction-sections -fdata-sections -fsingle-precision-constant

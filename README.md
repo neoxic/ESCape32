@@ -1,7 +1,7 @@
 ESCape32
 ========
 
-Firmware for 32-bit BLDC motor electronic speed controllers that aims at simplicity. It is designed to deliver smooth and efficient motor drive, fast transitions from a complete stop to full throttle, robust direction reversals, and maximum hardware support.
+Firmware for 32-bit BLDC motor electronic speed controllers that aims for simplicity. It is designed to deliver smooth and efficient motor drive, fast transitions from a complete stop to full throttle, robust direction reversals, and maximum hardware support.
 
 
 Features
@@ -44,18 +44,26 @@ Dependencies
 Building from source
 --------------------
 
+Use `LIBOPENCM3_DIR` to specify a path to LibOpenCM3 if it is not in the system root:
+
+```
+git clone https://github.com/libopencm3/libopencm3.git
+make -C libopencm3 TARGETS='stm32/f0 stm32/g0'
+cmake -B build -D LIBOPENCM3_DIR=libopencm3
+```
+
+Use `CMAKE_INSTALL_PREFIX` to specify an alternative system root:
+
+```
+cmake -B build -D CMAKE_INSTALL_PREFIX=~/local
+```
+
 To build all targets, run:
 
 ```
 cmake -B build
 cd build
 make
-```
-
-To specify an alternative root, run instead:
-
-```
-cmake -B build -D CMAKE_INSTALL_PREFIX=/path/to/libopencm3
 ```
 
 To flash a particular target using an ST-LINK programmer, run:
