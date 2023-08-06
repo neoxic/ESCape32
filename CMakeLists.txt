@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
-project(ESCape32 C)
 set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_SYSTEM_PROCESSOR arm)
 set(CMAKE_C_COMPILER arm-none-eabi-gcc)
+set(CMAKE_C_COMPILER_WORKS 1)
 set(CMAKE_C_FLAGS "-Os -g")
 set(CMAKE_C_FLAGS_DEBUG "-Og")
-set(OBJCOPY arm-none-eabi-objcopy)
+project(ESCape32 C)
 if(UNIX AND NOT CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT) # Use 'CMAKE_INSTALL_PREFIX' as alternative system root
 	set(CMAKE_PREFIX_PATH ${CMAKE_INSTALL_PREFIX})
 	include(GNUInstallDirs)
@@ -16,7 +15,6 @@ if(LIBOPENCM3_DIR)
 	include_directories(${LIBOPENCM3_DIR}/include)
 	link_directories(${LIBOPENCM3_DIR}/lib)
 endif()
-find_program(FLASH st-flash)
 add_compile_options(-ffreestanding -ffunction-sections -fdata-sections -fsingle-precision-constant
 	-Wall -Wextra -Wpedantic -Wundef -Wshadow -Wredundant-decls -Wstrict-prototypes -Wmissing-prototypes
 	-Wno-variadic-macros -Wno-unused-result -Wno-unused-parameter -Wno-unused-label)
@@ -39,12 +37,12 @@ function(add_target name mcu)
 	target_link_libraries(${elf} c_nano gcc nosys ${libs})
 	add_custom_command(
 		OUTPUT ${bin} ${hex}
-		COMMAND ${OBJCOPY} -O binary ${elf} ${bin}
-		COMMAND ${OBJCOPY} -O ihex ${elf} ${hex}
+		COMMAND arm-none-eabi-objcopy -O binary ${elf} ${bin}
+		COMMAND arm-none-eabi-objcopy -O ihex ${elf} ${hex}
 		DEPENDS ${elf}
 	)
 	add_custom_target(${name} ALL DEPENDS ${hex})
-	add_custom_target(flash-${name} COMMAND ${FLASH} --reset --connect-under-reset --format ihex write ${hex} DEPENDS ${hex})
+	add_custom_target(flash-${name} COMMAND st-flash --reset --connect-under-reset --format ihex write ${hex} DEPENDS ${hex})
 endfunction()
 
 add_subdirectory(boot)
