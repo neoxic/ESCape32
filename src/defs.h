@@ -168,7 +168,7 @@
 #define DUTY_RAMP 25
 #endif
 #ifndef DUTY_DRAG
-#define DUTY_DRAG 0
+#define DUTY_DRAG 75
 #endif
 #ifndef THROT_MODE
 #define THROT_MODE 0
@@ -227,4 +227,7 @@
 #endif
 #ifndef LED
 #define LED 0
+#endif
+#ifndef BRUSHED
+#define BRUSHED 0
 #endif

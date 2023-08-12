@@ -12,7 +12,7 @@ Features
 + Analog/serial/iBUS/SBUS input mode
 + KISS/iBUS/S.Port telemetry
 + DSHOT 3D mode, turtle mode, beacon, LED, programming
-+ Sine startup mode (crawler mode)
++ Sine startup mode (crawler mode), brushed mode
 + Proportional brake, drag brake
 + Temperature/voltage/current protection
 + Variable PWM frequency, active freewheeling

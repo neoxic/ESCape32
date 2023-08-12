@@ -63,7 +63,7 @@ void checkcfg(void) {
 	cfg.sine_power = 0;
 #else
 	cfg.timing = clamp(cfg.timing, 1, 7);
-	cfg.sine_range = cfg.damp && cfg.sine_range ? clamp(cfg.sine_range, 5, 25) : 0;
+	cfg.sine_range = cfg.damp && cfg.sine_range && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
 #endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
@@ -110,6 +110,7 @@ void checkcfg(void) {
 #else
 	cfg.led = 0;
 #endif
+	cfg.brushed = !!cfg.brushed;
 #ifndef ANALOG
 	if (!IO_ANALOG) return;
 	cfg.arm = 1; // Ensure low level on startup
@@ -120,8 +121,6 @@ void checkcfg(void) {
 int savecfg(void) {
 	if (ertm) return 0;
 	__disable_irq();
-	WWDG_CFR = ~WWDG_CFR_EWI; // Slow down watchdog
-	WWDG_CR = 0xff;
 	FLASH_KEYR = FLASH_KEYR_KEY1;
 	FLASH_KEYR = FLASH_KEYR_KEY2;
 	FLASH_SR = -1; // Clear errors
@@ -132,7 +131,7 @@ int savecfg(void) {
 	FLASH_AR = (uint32_t)_cfg;
 	FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT; // Erase page
 #endif
-	while (FLASH_SR & FLASH_SR_BSY) WWDG_CR = 0xff;
+	while (FLASH_SR & FLASH_SR_BSY);
 	FLASH_CR = FLASH_CR_PG;
 #ifdef STM32G0
 #define T uint32_t
@@ -148,10 +147,9 @@ int savecfg(void) {
 #ifdef STM32G0
 		*dst++ = *src++;
 #endif
-		while (FLASH_SR & FLASH_SR_BSY) WWDG_CR = 0xff;
+		while (FLASH_SR & FLASH_SR_BSY);
 	}
 	FLASH_CR = FLASH_CR_LOCK;
-	WWDG_CFR = 0x7f; // Resume watchdog
 	__enable_irq();
 #ifdef STM32G0
 	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return 0;
@@ -174,12 +172,12 @@ int playmusic(const char *str, int vol) {
 	if (!vol || ertm || flag) return 0;
 	flag = 1;
 	vol <<= 1;
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_LOW;
-	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
 #ifdef INVERTED_HIGH
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC3E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC2E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
 #else
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC3E;
+	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC2E;
 #endif
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 8MHz
 	for (int a, b; (a = *str++);) {
@@ -191,7 +189,7 @@ int playmusic(const char *str, int vol) {
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
 		TIM1_ARR = arr[a] >> b; // Frequency
-		TIM1_CCR3 = vol; // Volume
+		TIM1_CCR2 = vol; // Volume
 	set:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		a = *str;
@@ -200,9 +198,8 @@ int playmusic(const char *str, int vol) {
 		for (uint32_t t = tickms + a * 125; t != tickms;) { // Duration 125*X ms
 			if (TIM14_CR1 & TIM_CR1_CEN) TIM14_EGR = TIM_EGR_UG; // Reset arming timeout
 			IWDG_KR = IWDG_KR_RESET;
-			WWDG_CR = 0xff;
 		}
-		TIM1_CCR3 = 0; // Preload silence
+		TIM1_CCR2 = 0; // Preload silence
 	}
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;

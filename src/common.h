@@ -86,6 +86,7 @@ typedef struct {
 	char volume;
 	char beacon;
 	char led;
+	char brushed;
 } Cfg;
 
 typedef struct {

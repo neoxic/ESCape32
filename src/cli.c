@@ -49,6 +49,7 @@
 	XX(28, val, volume) \
 	XX(29, val, beacon) \
 	XX(30, val, led) \
+	XX(31, val, brushed) \
 
 static int beep = -1;
 

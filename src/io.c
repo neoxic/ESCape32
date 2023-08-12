@@ -242,12 +242,10 @@ static void dshotdma(void) {
 	static int cmd, cnt, rep;
 	if (DMA1_CCR(IOTIM_DMA) & DMA_CCR_DIR) {
 #ifdef AT32F421 // Errata 1.5.1
-		int psc = TIM15_PSC;
 		RCC_APB2RSTR = RCC_APB2RSTR_TIM15RST;
 		RCC_APB2RSTR = 0;
 		TIM15_BDTR = TIM_BDTR_MOE;
 		TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
-		TIM15_PSC = psc;
 #else
 		TIM_CCER(IOTIM) = 0;
 		TIM_DIER(IOTIM) = 0;
@@ -285,6 +283,7 @@ static void dshotdma(void) {
 		TIM_SMCR(IOTIM) = 0;
 		TIM_CCMR1(IOTIM) = 0; // Disable OC before enabling PWM to force OC1REF update (RM: OC1M, note #2)
 		TIM_CCMR1(IOTIM) = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2;
+		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output as soon as possible (GD32F350 makes a twitch)
 		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
 		DMA1_CCR(IOTIM_DMA) = 0;
 		DMA1_CNDTR(IOTIM_DMA) = 23;
@@ -313,7 +312,6 @@ static void dshotdma(void) {
 		TIM_CCR1(IOTIM) = 0; // Preload high level
 		TIM_EGR(IOTIM) = TIM_EGR_UG; // Update registers and trigger DMA to preload the first bit
 		TIM_ARR(IOTIM) = dshotarr2; // Preload bit time
-		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output
 		__enable_irq();
 		if (!rep || !--rep) dshotval = 0;
 	}
@@ -411,15 +409,17 @@ static void dshotdma(void) {
 			cfg.led &= ~8;
 			break;
 #endif
-		case 40: // Increase timing
+		case 40: // Select timing
 			if (cnt != 6) break;
-			if ((x = cfg.timing) < 7) ++x;
+			if ((x = cfg.timing + 1) > 7) x = 1;
 			beepval = cfg.timing = x;
 			break;
-		case 41: // Decrease timing
+		case 41: // Select PWM frequency
 			if (cnt != 6) break;
-			if ((x = cfg.timing) > 1) --x;
-			beepval = cfg.timing = x;
+			if ((x = (cfg.freq_min >> 2) + 1) > 12 || x < 6) x = 6;
+			cfg.freq_min = x << 2;
+			cfg.freq_max = x << 3;
+			beepval = x - 5;
 			break;
 		case 42: // Increase acceleration ramping
 			if (cnt != 6) break;
@@ -563,6 +563,10 @@ static void cliirq(void) {
 	}
 	if (USART2_ISR & USART_ISR_FE || i == sizeof iobuf - 1) reset(); // Data error
 	char b = USART2_RDR; // Clear RXNE
+	if (b == '\b' || b == 0x7f) { // Backspace
+		if (i > 0) --i;
+		return;
+	}
 	iobuf[i++] = b;
 	if (i == 2 && iobuf[0] == 0x00 && iobuf[1] == 0xff) scb_reset_system(); // Reboot into bootloader
 	if (b != '\n') return;
@@ -618,6 +622,10 @@ static void cliirq(void) {
 			TIM3_SR = ~TIM_SR_CC2IF;
 			TIM3_DIER = TIM_DIER_CC2IE;
 			n = 0;
+			if (b == '\b' || b == 0x7f) { // Backspace
+				if (i > 0) --i;
+				break;
+			}
 			iobuf[i++] = b;
 			if (i == 2 && iobuf[0] == 0x00 && iobuf[1] == 0xff) scb_reset_system(); // Reboot into bootloader
 			if (b != '\n') break;
