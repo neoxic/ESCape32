@@ -42,7 +42,7 @@
 #define CLK_MHZ (CLK / 1000000)
 
 #ifdef ANALOG
-#define IO_ANALOG (ANALOG_MIN != ANALOG_MAX)
+#define IO_ANALOG (ANALOG_THROT < 100)
 #elif defined IO_PA2 || defined IO_PA6
 #define IO_ANALOG (cfg.input_mode == 1)
 #else

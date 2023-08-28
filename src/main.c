@@ -314,7 +314,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 #endif
 
 void adc_data(int t, int v, int c, int x) {
-	static int z = 5000, st = -1, sv = -1, sc = -1, sx = -1;
+	static int z = 3300, st = -1, sv = -1, sc = -1, sx = -1;
 	if ((c -= z) >= 0) ready = 1;
 	else {
 		if (!ready) z += c >> 1;
@@ -324,7 +324,7 @@ void adc_data(int t, int v, int c, int x) {
 	volt = smooth(&sv, v * VOLT_MUL / 100, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
 	if (!analog) return;
-	throt = scale(smooth(&sx, x, 4), 10, 4085, ANALOG_MIN * 20, ANALOG_MAX * 20); // Analog throttle
+	throt = scale(smooth(&sx, x, 5), ANALOG_MIN, ANALOG_MAX, ANALOG_THROT * 20, 2000); // Analog throttle
 }
 
 void sys_tick_handler(void) {
@@ -399,8 +399,8 @@ void main(void) {
 #ifndef ANALOG
 	initio();
 #else
-	throt = ANALOG_MIN * 20;
-	analog = ANALOG_MIN != ANALOG_MAX;
+	throt = ANALOG_THROT * 20;
+	analog = ANALOG_THROT < 100;
 #endif
 
 	TIM1_BDTR = TIM_DTG | TIM_BDTR_OSSR | TIM_BDTR_MOE;

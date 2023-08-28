@@ -292,5 +292,5 @@ void dma1_channel4_7_dmamux_isr(void) {
 	if (ain) x = buf[i++];
 	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
 	int t = (buf[i] * r / 3000 - ST_TSENSE_CAL1_30C) * 100 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 30;
-	adc_data(t, v * r >> 12, c * r >> 12, x);
+	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

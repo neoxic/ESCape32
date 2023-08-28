@@ -176,5 +176,5 @@ void dma1_channel1_isr(void) {
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
 	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 80 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 30;
-	adc_data(t, v * r >> 12, c * r >> 12, x);
+	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

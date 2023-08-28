@@ -123,10 +123,13 @@
 #define CURR_MUL 0 // mA/mV
 #endif
 #ifndef ANALOG_MIN
-#define ANALOG_MIN 0 // %
+#define ANALOG_MIN 100 // mV
 #endif
 #ifndef ANALOG_MAX
-#define ANALOG_MAX 100 // %
+#define ANALOG_MAX 3200 // mV
+#endif
+#ifndef ANALOG_THROT
+#define ANALOG_THROT 0 // %
 #endif
 
 // Default settings
