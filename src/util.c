@@ -71,7 +71,7 @@ void checkcfg(void) {
 	cfg.duty_min = clamp(cfg.duty_min, 1, 100);
 	cfg.duty_max = clamp(cfg.duty_max, cfg.duty_min, 100);
 	cfg.duty_spup = clamp(cfg.duty_spup, 1, 25);
-	cfg.duty_ramp = clamp(cfg.duty_ramp, 1, 100);
+	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, 2);
 	cfg.throt_cal = !!cfg.throt_cal;

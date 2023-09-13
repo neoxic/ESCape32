@@ -66,7 +66,7 @@ typedef struct {
 	char duty_min;
 	char duty_max;
 	char duty_spup;
-	char duty_ramp;
+	char duty_rate;
 	char duty_drag;
 	char throt_mode;
 	char throt_cal;

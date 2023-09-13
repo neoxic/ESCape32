@@ -167,8 +167,8 @@
 #ifndef DUTY_SPUP
 #define DUTY_SPUP 10
 #endif
-#ifndef DUTY_RAMP
-#define DUTY_RAMP 25
+#ifndef DUTY_RATE
+#define DUTY_RATE 25
 #endif
 #ifndef DUTY_DRAG
 #define DUTY_DRAG 75

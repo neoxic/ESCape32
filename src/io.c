@@ -421,15 +421,15 @@ static void dshotdma(void) {
 			cfg.freq_max = x << 3;
 			beepval = x - 5;
 			break;
-		case 42: // Increase acceleration ramping
+		case 42: // Increase acceleration slew rate
 			if (cnt != 6) break;
-			if ((x = cfg.duty_ramp) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
-			beepval = cfg.duty_ramp = x;
+			if ((x = cfg.duty_rate) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
+			beepval = cfg.duty_rate = x;
 			break;
-		case 43: // Decrease acceleration ramping
+		case 43: // Decrease acceleration slew rate
 			if (cnt != 6) break;
-			if ((x = cfg.duty_ramp) > 1 && --x > 10) x = x / 5 * 5;
-			beepval = cfg.duty_ramp = x;
+			if ((x = cfg.duty_rate) > 1 && --x > 10) x = x / 5 * 5;
+			beepval = cfg.duty_rate = x;
 			break;
 		case 47: // Reset settings
 			if (cnt != 6) break;

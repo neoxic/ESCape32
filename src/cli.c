@@ -29,7 +29,7 @@
 	XX( 8, val, duty_min) \
 	XX( 9, val, duty_max) \
 	XX(10, val, duty_spup) \
-	XX(11, val, duty_ramp) \
+	XX(11, val, duty_rate) \
 	XX(12, val, duty_drag) \
 	XX(13, val, throt_mode) \
 	XX(14, val, throt_cal) \

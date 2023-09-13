@@ -35,7 +35,7 @@ const Cfg cfgdata = {
 	.duty_min = DUTY_MIN,       // Minimum duty cycle (%) [1..100]
 	.duty_max = DUTY_MAX,       // Maximum duty cycle (%) [1..100]
 	.duty_spup = DUTY_SPUP,     // Maximum power during spin-up (%) [1..25]
-	.duty_ramp = DUTY_RAMP,     // Acceleration ramping (0.1*X %/ms) [1..100]
+	.duty_rate = DUTY_RATE,     // Acceleration slew rate (0.1*X %/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
 	.throt_cal = THROT_CAL,     // Throttle calibration
@@ -527,11 +527,11 @@ void main(void) {
 				int maxduty = cfg.duty_spup * 20;
 				if (newduty > maxduty) newduty = maxduty;
 			}
-			int a = accl ? 0 : cfg.duty_ramp;
+			int a = accl ? 0 : cfg.duty_rate;
 			int b = a >> 3;
 			if (r < (a & 7)) ++b;
 			if (++r == 8) r = 0;
-			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration ramping
+			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration slew rate limiting
 		}
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, cfg.brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
