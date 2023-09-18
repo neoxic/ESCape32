@@ -45,7 +45,7 @@ static void (*ioirq)(void);
 static void (*iodma)(void);
 
 static char dshotinv, iobuf[1024];
-static uint16_t dshotarr1, dshotarr2, dshotbuf[23];
+static uint16_t dshotarr1, dshotarr2, dshotbuf[32];
 
 void initio(void) {
 	ioirq = entryirq;
@@ -153,10 +153,11 @@ static void entryirq(void) {
 	iodma = dshotdma;
 	dshotarr1 = CLK_CNT(m * 150000) - 1;
 	dshotarr2 = CLK_CNT(m * 375000) - 1;
-	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCER(IOTIM) = 0;
+	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
+	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
 	TIM_DIER(IOTIM) = TIM_DIER_UIE;
-	TIM_ARR(IOTIM) = dshotarr1; // Frame reset time (two bits)
+	TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	DMA1_CPAR(IOTIM_DMA) = (uint32_t)&TIM_CCR1(IOTIM);
 	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf;
@@ -213,16 +214,11 @@ static void servoirq(void) {
 static void dshotirq(void) {
 	if (!(TIM_DIER(IOTIM) & TIM_DIER_UIE) || !(TIM_SR(IOTIM) & TIM_SR_UIF)) return; // Fall through exactly once
 	TIM_SR(IOTIM) = ~TIM_SR_UIF;
-	if (!TIM_CCER(IOTIM)) {
-		if (IOTIM_IDR) { // Bidirectional DSHOT is inverted
-			TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on rising edge on TI1
-			dshotinv = 1;
-		} else {
-			TIM_CCER(IOTIM) = TIM_CCER_CC1E | TIM_CCER_CC1P; // IC1 on falling edge on TI1
-			dshotinv = 0;
-		}
+	if (!TIM_CCER(IOTIM)) { // Detect DSHOT polarity
+		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
+		dshotinv = IOTIM_IDR; // Inactive level
 	}
-	DMA1_CNDTR(IOTIM_DMA) = 16;
+	DMA1_CNDTR(IOTIM_DMA) = 32;
 	DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 	TIM_ARR(IOTIM) = -1;
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
@@ -252,26 +248,29 @@ static void dshotdma(void) {
 		TIM_CR2(IOTIM) = 0;
 #endif
 		DMA1_CCR(IOTIM_DMA) = 0;
-		DMA1_CNDTR(IOTIM_DMA) = 16;
+		DMA1_CNDTR(IOTIM_DMA) = 32;
 		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		TIM_ARR(IOTIM) = -1;
 		TIM_EGR(IOTIM) = TIM_EGR_UG;
 		TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
-		TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_CK_INT_N_8;
-		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on rising edge on TI1
+		TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
+		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
 		TIM_DIER(IOTIM) = TIM_DIER_CC1DE;
 		return;
 	}
 	int x = 0;
-	int y = (dshotarr1 + 1) >> 2; // Half-bit time
-	for (int i = 0; i < 16; ++i) {
+	int y = dshotarr1 + 1; // Two bit time
+	int z = y >> 2; // Half-bit time
+	for (int i = 0; i < 32; ++i) {
+		if (i && dshotbuf[i] >= y) goto resync; // Invalid pulse timing
 		x <<= 1;
-		if (dshotbuf[i] >= y) x |= 1;
+		if (dshotbuf[++i] >= z) x |= 1;
 	}
 	if (dshotcrc(x, dshotinv)) { // Invalid checksum
+	resync:
 		DMA1_CCR(IOTIM_DMA) = 0;
 		TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
-		TIM_ARR(IOTIM) = dshotarr1; // Frame reset time (two bits)
+		TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
 		TIM_EGR(IOTIM) = TIM_EGR_UG;
 		TIM_SR(IOTIM) = ~TIM_SR_UIF;
 		TIM_DIER(IOTIM) = TIM_DIER_UIE;
