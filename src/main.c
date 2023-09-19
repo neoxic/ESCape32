@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 6
+#define REVISION 7
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -34,10 +34,12 @@ const Cfg cfgdata = {
 	.freq_max = FREQ_MAX,       // Maximum PWM frequency (kHz) [16..96]
 	.duty_min = DUTY_MIN,       // Minimum duty cycle (%) [1..100]
 	.duty_max = DUTY_MAX,       // Maximum duty cycle (%) [1..100]
-	.duty_spup = DUTY_SPUP,     // Maximum power during spin-up (%) [1..25]
+	.duty_spup = DUTY_SPUP,     // Maximum duty cycle during spin-up (%) [1..25]
+	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
 	.duty_rate = DUTY_RATE,     // Acceleration slew rate (0.1*X %/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
+	.throt_set = THROT_SET,     // Fixed/analog base throttle (%) [0..100]
 	.throt_cal = THROT_CAL,     // Throttle calibration
 	.throt_min = THROT_MIN,     // Minimum throttle (us)
 	.throt_mid = THROT_MID,     // Middle throttle (us)
@@ -229,19 +231,19 @@ static void nextstep(void) {
 	buf[step - 1] = ival;
 	if (sync == 6) ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> 1; // Electrical revolution time (us)
 #ifndef SENSORED
-	static int pcc, a, b;
+	static int pcc, val, cnt;
 	compctl(pcc);
 	pcc = cc;
 	if (ival > 1000) {
-		a = 1000;
-		b = 0;
-	} else if (++b == 6) {
-		if (a - ival > ival >> 1) { // Desync
+		val = 1000;
+		cnt = 0;
+	} else if (++cnt == 6) {
+		if ((val > ival ? val - ival : ival - val) > ival >> 1) { // Probably desync
 			TIM_DIER(IFTIM) = TIM_DIER_UIE;
 			return;
 		}
-		a = ival;
-		b = 0;
+		val = ival;
+		cnt = 0;
 	}
 	if (ertm < 1000) { // 60K+ ERPM
 		TIM1_CCR4 = 0;
@@ -324,7 +326,7 @@ void adc_data(int t, int v, int c, int x) {
 	volt = smooth(&sv, v * VOLT_MUL / 100, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
 	if (!analog) return;
-	throt = scale(smooth(&sx, x, 5), ANALOG_MIN, ANALOG_MAX, ANALOG_THROT * 20, 2000); // Analog throttle
+	throt = scale(smooth(&sx, x, 5), ANALOG_MIN, ANALOG_MAX, cfg.throt_set * 20, 2000); // Analog throttle
 }
 
 void sys_tick_handler(void) {
@@ -393,16 +395,16 @@ static void beep(void) {
 void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
+	throt = cfg.throt_set * 20;
+#if defined ANALOG || defined ANALOG_PIN
+	analog = IO_ANALOG;
+#endif
 	init();
 	initled();
 	inittelem();
 #ifndef ANALOG
 	initio();
-#else
-	throt = ANALOG_THROT * 20;
-	analog = ANALOG_THROT < 100;
 #endif
-
 	TIM1_BDTR = TIM_DTG | TIM_BDTR_OSSR | TIM_BDTR_MOE;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
@@ -411,7 +413,6 @@ void main(void) {
 #else
 	TIM1_CR2 = TIM_CR2_CCPC | TIM_CR2_CCUS | TIM_CR2_MMS_COMPARE_PULSE; // TRGO=OC1
 #endif
-
 	TIM_PSC(IFTIM) = CLK_MHZ / 2 - 1; // 0.5us resolution
 	TIM_ARR(IFTIM) = 0;
 	TIM_CR1(IFTIM) = TIM_CR1_URS;
@@ -423,12 +424,10 @@ void main(void) {
 	TIM_CCMR1(IFTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
 	TIM_CCER(IFTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
 #endif
-
 	nvic_set_priority(NVIC_PENDSV_IRQ, 0x80);
 	STK_RVR = CLK_KHZ / 16 - 1; // 16kHz
 	STK_CVR = 0;
 	STK_CSR = STK_CSR_ENABLE | STK_CSR_TICKINT | STK_CSR_CLKSOURCE_AHB;
-
 	int cells = cfg.prot_cells;
 #if SENS_CNT > 0
 	while (!ready) __WFI(); // Wait for sensors
@@ -522,12 +521,10 @@ void main(void) {
 				erpm = 60000000 / ertm;
 				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max); // Variable PWM frequency
 			}
+			int maxduty = sync < 6 ? cfg.duty_spup * 20 : scale(erpm, 0, cfg.duty_ramp * 1000, 500, 2000);
 			if ((newduty -= choke) < 0) newduty = 0;
-			if (sync < 6) { // Power cap during spin-up
-				int maxduty = cfg.duty_spup * 20;
-				if (newduty > maxduty) newduty = maxduty;
-			}
-			int a = accl ? 0 : cfg.duty_rate;
+			if (newduty > maxduty) newduty = maxduty;
+			int a = accl ? 0 : cfg.duty_rate << (erpm > 60000);
 			int b = a >> 3;
 			if (r < (a & 7)) ++b;
 			if (++r == 8) r = 0;

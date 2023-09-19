@@ -90,7 +90,7 @@ void init(void) {
 	ADC1_SQR3 = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		ADC1_SQR3 |= THROT_CHAN << (len++ * 5);
+		ADC1_SQR3 |= AIN_PIN << (len++ * 5);
 		ain = 1;
 	}
 	ADC1_SQR3 |= 0x230 << (len * 5); // CH16 (temp), CH17 (vref)

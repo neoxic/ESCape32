@@ -408,7 +408,7 @@ static void dshotdma(void) {
 			cfg.led &= ~8;
 			break;
 #endif
-		case 40: // Select timing
+		case 40: // Select motor timing
 			if (cnt != 6) break;
 			if ((x = cfg.timing + 1) > 7) x = 1;
 			beepval = cfg.timing = x;
@@ -420,12 +420,18 @@ static void dshotdma(void) {
 			cfg.freq_max = x << 3;
 			beepval = x - 5;
 			break;
-		case 42: // Increase acceleration slew rate
+		case 42: // Select maximum duty cycle ramp
+			if (cnt != 6) break;
+			if ((x = cfg.duty_ramp / 10 + 1) > 10) x = 0;
+			cfg.duty_ramp = x * 10;
+			beepval = x;
+			break;
+		case 43: // Increase acceleration slew rate
 			if (cnt != 6) break;
 			if ((x = cfg.duty_rate) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
 			beepval = cfg.duty_rate = x;
 			break;
-		case 43: // Decrease acceleration slew rate
+		case 44: // Decrease acceleration slew rate
 			if (cnt != 6) break;
 			if ((x = cfg.duty_rate) > 1 && --x > 10) x = x / 5 * 5;
 			beepval = cfg.duty_rate = x;

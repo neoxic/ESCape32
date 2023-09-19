@@ -29,27 +29,29 @@
 	XX( 8, val, duty_min) \
 	XX( 9, val, duty_max) \
 	XX(10, val, duty_spup) \
-	XX(11, val, duty_rate) \
-	XX(12, val, duty_drag) \
-	XX(13, val, throt_mode) \
-	XX(14, val, throt_cal) \
-	XX(15, val, throt_min) \
-	XX(16, val, throt_mid) \
-	XX(17, val, throt_max) \
-	XX(18, val, input_mode) \
-	XX(19, val, input_chid) \
-	XX(20, val, telem_mode) \
-	XX(21, val, telem_phid) \
-	XX(22, val, telem_poles) \
-	XX(23, val, prot_temp) \
-	XX(24, val, prot_volt) \
-	XX(25, val, prot_cells) \
-	XX(26, val, prot_curr) \
-	XX(27, str, music) \
-	XX(28, val, volume) \
-	XX(29, val, beacon) \
-	XX(30, val, led) \
-	XX(31, val, brushed) \
+	XX(11, val, duty_ramp) \
+	XX(12, val, duty_rate) \
+	XX(13, val, duty_drag) \
+	XX(14, val, throt_mode) \
+	XX(15, val, throt_set) \
+	XX(16, val, throt_cal) \
+	XX(17, val, throt_min) \
+	XX(18, val, throt_mid) \
+	XX(19, val, throt_max) \
+	XX(20, val, input_mode) \
+	XX(21, val, input_chid) \
+	XX(22, val, telem_mode) \
+	XX(23, val, telem_phid) \
+	XX(24, val, telem_poles) \
+	XX(25, val, prot_temp) \
+	XX(26, val, prot_volt) \
+	XX(27, val, prot_cells) \
+	XX(28, val, prot_curr) \
+	XX(29, str, music) \
+	XX(30, val, volume) \
+	XX(31, val, beacon) \
+	XX(32, val, led) \
+	XX(33, val, brushed) \
 
 static int beep = -1;
 
@@ -211,6 +213,7 @@ CFG_MAP(XX)
 		case 8: // 'throt <value>'
 			if (narg != 2 || !getval(args[1], &val) || val < -2000 || val > 2000) goto error;
 			throt = val;
+			analog = 0;
 			break;
 		case 9: // 'beep'
 			if (narg != 1) goto error;

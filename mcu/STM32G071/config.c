@@ -122,7 +122,7 @@ void init(void) {
 	ADC1_CHSELR = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= THROT_CHAN << (len++ << 2);
+		ADC1_CHSELR |= AIN_PIN << (len++ << 2);
 		ain = 1;
 	}
 	ADC1_CHSELR |= 0xfdc << (len << 2); // CH12 (temp), CH13 (vref)

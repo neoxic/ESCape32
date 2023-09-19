@@ -42,11 +42,19 @@
 #define CLK_MHZ (CLK / 1000000)
 
 #ifdef ANALOG
-#define IO_ANALOG (ANALOG_THROT < 100)
-#elif defined IO_PA2 || defined IO_PA6
+#define IO_ANALOG (cfg.throt_set < 100)
+#elif defined IO_PA2 || defined IO_PA6 || defined ANALOG_PIN
 #define IO_ANALOG (cfg.input_mode == 1)
 #else
 #define IO_ANALOG 0
+#endif
+
+#ifdef ANALOG_PIN
+#define AIN_PIN ANALOG_PIN
+#elif defined IO_PA6
+#define AIN_PIN 6
+#else
+#define AIN_PIN 2
 #endif
 
 typedef struct {
@@ -66,9 +74,11 @@ typedef struct {
 	char duty_min;
 	char duty_max;
 	char duty_spup;
+	char duty_ramp;
 	char duty_rate;
 	char duty_drag;
 	char throt_mode;
+	char throt_set;
 	char throt_cal;
 	short throt_min;
 	short throt_mid;

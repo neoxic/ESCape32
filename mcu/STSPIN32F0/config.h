@@ -17,10 +17,6 @@
 
 #pragma once
 
-#ifndef THROT_CHAN
-#define THROT_CHAN 0x40 // A6
-#endif
-
 #define CLK 48000000
 #define SENSORED
 #define IO_PA6

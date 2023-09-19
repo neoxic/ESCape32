@@ -84,7 +84,7 @@ void init(void) {
 	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH16 (temp), CH17 (vref)
 	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= THROT_CHAN;
+		ADC1_CHSELR |= 1 << AIN_PIN;
 		ain = 1;
 		++len;
 	}
@@ -157,7 +157,7 @@ void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
 	int i = 0, v = 0, c = 0, x = 0;
-#ifndef THROT_LAST
+#ifndef AIN_LAST
 	if (ain) x = buf[i++];
 #endif
 #ifdef SENS_SWAP
@@ -171,7 +171,7 @@ void dma1_channel1_isr(void) {
 	v = buf[i++];
 #endif
 #endif
-#ifdef THROT_LAST
+#ifdef AIN_LAST
 	if (ain) x = buf[i++];
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];

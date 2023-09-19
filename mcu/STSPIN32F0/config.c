@@ -73,7 +73,7 @@ void init(void) {
 	ADC1_CHSELR = 0x30000; // CH16 (temp), CH17 (vref)
 	len = 2;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= THROT_CHAN;
+		ADC1_CHSELR |= 1 << AIN_PIN;
 		ain = 1;
 		++len;
 	}

@@ -31,14 +31,6 @@
 #define SENS_CHAN 0x64
 #endif
 
-#ifndef THROT_CHAN
-#ifdef IO_PA2
-#define THROT_CHAN 2 // A2
-#else
-#define THROT_CHAN 6 // A6
-#endif
-#endif
-
 #define CLK 64000000
 
 #define IFTIM TIM2

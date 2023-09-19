@@ -54,7 +54,15 @@ int calcpid(PID *pid, int x, int y) {
 }
 
 void checkcfg(void) {
+#ifdef ANALOG
+	cfg.arm = 0;
+#else
+#ifndef ANALOG_PIN
+	if (IO_ANALOG) cfg.arm = 1; // Ensure low level on startup
+	else
+#endif
 	cfg.arm = !!cfg.arm;
+#endif
 	cfg.damp = !!cfg.damp;
 	cfg.revdir = !!cfg.revdir;
 #ifdef SENSORED
@@ -71,9 +79,11 @@ void checkcfg(void) {
 	cfg.duty_min = clamp(cfg.duty_min, 1, 100);
 	cfg.duty_max = clamp(cfg.duty_max, cfg.duty_min, 100);
 	cfg.duty_spup = clamp(cfg.duty_spup, 1, 25);
+	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 100);
 	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
-	cfg.throt_mode = clamp(cfg.throt_mode, 0, 2);
+	cfg.throt_mode = IO_ANALOG ? 0 : clamp(cfg.throt_mode, 0, 2);
+	cfg.throt_set = cfg.arm ? 0 : clamp(cfg.throt_set, 0, 100);
 	cfg.throt_cal = !!cfg.throt_cal;
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
 	cfg.throt_max = clamp(cfg.throt_max, cfg.throt_min + 200, 2100);
@@ -82,7 +92,7 @@ void checkcfg(void) {
 	cfg.input_mode = clamp(cfg.input_mode, 0, 4);
 	cfg.input_chid = cfg.input_mode >= 3 ? clamp(cfg.input_chid, 1, cfg.input_mode == 4 ? 16 : 14) : 0;
 #else
-#ifdef IO_PA6
+#if defined IO_PA6 || defined ANALOG_PIN
 	cfg.input_mode = clamp(cfg.input_mode, 0, 1);
 #else
 	cfg.input_mode = 0;
@@ -111,11 +121,6 @@ void checkcfg(void) {
 	cfg.led = 0;
 #endif
 	cfg.brushed = !!cfg.brushed;
-#ifndef ANALOG
-	if (!IO_ANALOG) return;
-	cfg.arm = 1; // Ensure low level on startup
-	cfg.throt_mode = 0;
-#endif
 }
 
 int savecfg(void) {

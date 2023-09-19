@@ -128,9 +128,6 @@
 #ifndef ANALOG_MAX
 #define ANALOG_MAX 3200 // mV
 #endif
-#ifndef ANALOG_THROT
-#define ANALOG_THROT 0 // %
-#endif
 
 // Default settings
 
@@ -167,6 +164,9 @@
 #ifndef DUTY_SPUP
 #define DUTY_SPUP 10
 #endif
+#ifndef DUTY_RAMP
+#define DUTY_RAMP 0
+#endif
 #ifndef DUTY_RATE
 #define DUTY_RATE 25
 #endif
@@ -175,6 +175,9 @@
 #endif
 #ifndef THROT_MODE
 #define THROT_MODE 0
+#endif
+#ifndef THROT_SET
+#define THROT_SET 0
 #endif
 #ifndef THROT_CAL
 #ifdef USE_HSE
