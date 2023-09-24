@@ -80,6 +80,16 @@ static char prep, accl, tick, reverse, ready;
 }
 #endif
 
+#ifndef SENSORED
+static void resync(void) {
+	TIM_DIER(IFTIM) = 0;
+	sync = 0;
+	accl = 0;
+	ival = 10000;
+	ertm = 100000000;
+}
+#endif
+
 /*
 6-step commutation sequence:
  #  +|-  mask  code
@@ -239,7 +249,7 @@ static void nextstep(void) {
 		cnt = 0;
 	} else if (++cnt == 6) {
 		if ((val > ival ? val - ival : ival - val) > ival >> 1) { // Probably desync
-			TIM_DIER(IFTIM) = TIM_DIER_UIE;
+			resync();
 			return;
 		}
 		val = ival;
@@ -295,11 +305,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int sr = TIM_SR(IFTIM);
 	if ((er & TIM_DIER_UIE) && (sr & TIM_SR_UIF)) { // Timeout
 		TIM_SR(IFTIM) = ~TIM_SR_UIF;
-		TIM_DIER(IFTIM) = 0;
-		sync = 0;
-		accl = 0;
-		ival = 10000;
-		ertm = 100000000;
+		resync();
 		return;
 	}
 	if (!(er & IFTIM_ICE)) return;
@@ -308,7 +314,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int u = ival * 3;
 	accl = t < u >> 2 && sync == 6; // Rapid acceleration
 	ival = (t + u) >> 2; // Commutation interval
-	IFTIM_OCR = ((ival >> 1) - (ival * cfg.timing >> 4)) >> accl; // Commutation delay
+	IFTIM_OCR = (ival >> 1) - (ival * cfg.timing >> 4); // Commutation delay
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_DIER(IFTIM) = 0;
 	if (sync < 6) ++sync;
@@ -524,7 +530,7 @@ void main(void) {
 			int maxduty = sync < 6 ? cfg.duty_spup * 20 : scale(erpm, 0, cfg.duty_ramp * 1000, 500, 2000);
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (newduty > maxduty) newduty = maxduty;
-			int a = accl ? 0 : cfg.duty_rate << (erpm > 60000);
+			int a = accl ? 0 : cfg.duty_rate;
 			int b = a >> 3;
 			if (r < (a & 7)) ++b;
 			if (++r == 8) r = 0;
