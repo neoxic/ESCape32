@@ -214,8 +214,3 @@ int playmusic(const char *str, int vol) {
 	flag = 0;
 	return !str[-1];
 }
-
-void reset(void) {
-	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
-	for (;;); // Never return
-}

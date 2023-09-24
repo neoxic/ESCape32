@@ -132,4 +132,3 @@ void checkcfg(void);
 int savecfg(void);
 int resetcfg(void);
 int playmusic(const char *str, int vol);
-void reset(void) __attribute__((__noreturn__));

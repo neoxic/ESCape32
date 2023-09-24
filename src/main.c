@@ -70,15 +70,18 @@ volatile uint32_t tickms;
 static int step, sine, sync, ival;
 static char prep, accl, tick, reverse, ready;
 
-#ifdef ANALOG
-#define reset() { \
-	__disable_irq(); \
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW; \
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW; \
-	TIM1_EGR = TIM_EGR_COMG; \
-	for (;;); \
+static void reset(void) {
+	__disable_irq();
+	TIM1_EGR = TIM_EGR_BG;
+	TIM14_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
+	TIM14_ARR = 9999;
+	TIM14_EGR = TIM_EGR_UG;
+	TIM14_CR1 = TIM_CR1_CEN;
+	TIM14_SR = ~TIM_SR_UIF;
+	while (!(TIM14_SR & TIM_SR_UIF)); // Wait for 1s
+	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
+	for (;;); // Never return
 }
-#endif
 
 #ifndef SENSORED
 static void resync(void) {

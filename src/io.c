@@ -566,7 +566,7 @@ static void cliirq(void) {
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 		return;
 	}
-	if (USART2_ISR & USART_ISR_FE || i == sizeof iobuf - 1) reset(); // Data error
+	if (USART2_ISR & USART_ISR_FE || i == sizeof iobuf - 1) WWDG_CR = WWDG_CR_WDGA; // Data error
 	char b = USART2_RDR; // Clear RXNE
 	if (b == '\b' || b == 0x7f) { // Backspace
 		if (i > 0) --i;
@@ -614,7 +614,7 @@ static void cliirq(void) {
 			TIM3_SR = ~TIM_SR_CC1IF;
 			int p = IOTIM_IDR; // Signal level
 			if (!n++) { // Start bit
-				if (p) reset(); // Data error
+				if (p) WWDG_CR = WWDG_CR_WDGA; // Data error
 				b = 0;
 				break;
 			}
@@ -623,7 +623,7 @@ static void cliirq(void) {
 				if (p) b |= 0x80;
 				break;
 			}
-			if (!p || i == sizeof iobuf - 1) reset(); // Data error
+			if (!p || i == sizeof iobuf - 1) WWDG_CR = WWDG_CR_WDGA; // Data error
 			TIM3_SR = ~TIM_SR_CC2IF;
 			TIM3_DIER = TIM_DIER_CC2IE;
 			n = 0;
