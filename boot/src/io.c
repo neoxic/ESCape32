@@ -51,7 +51,7 @@ void initio(void) {
 }
 
 #ifdef IO_PA2
-int recv(char *buf, int len) {
+int recvbuf(char *buf, int len) {
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_SR = ~TIM_SR_UIF;
 	USART2_ICR = USART_ICR_FECF;
@@ -66,7 +66,7 @@ int recv(char *buf, int len) {
 	return 1;
 }
 
-void send(const char *buf, int len) {
+void sendbuf(const char *buf, int len) {
 	USART2_CR1 = USART_CR1_UE | USART_CR1_TE;
 	for (int i = 0; i < len; ++i) {
 		while (!(USART2_ISR & USART_ISR_TXE));
@@ -76,7 +76,7 @@ void send(const char *buf, int len) {
 	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 }
 #else
-int recv(char *buf, int len) {
+int recvbuf(char *buf, int len) {
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_SR = ~TIM_SR_UIF;
 	int n = 10, b = 0;
@@ -109,7 +109,7 @@ int recv(char *buf, int len) {
 	}
 }
 
-void send(const char *buf, int len) {
+void sendbuf(const char *buf, int len) {
 	TIM3_SMCR = 0;
 	TIM3_CCR1 = 0; // Preload high level
 	TIM3_EGR = TIM_EGR_UG; // Update registers and trigger UEV
@@ -140,12 +140,12 @@ void send(const char *buf, int len) {
 
 int recvval(void) {
 	char buf[2];
-	return recv(buf, 2) && (buf[0] ^ buf[1]) == 0xff ? buf[0] : -1;
+	return recvbuf(buf, 2) && (buf[0] ^ buf[1]) == 0xff ? buf[0] : -1;
 }
 
 void sendval(int val) {
 	char buf[2] = {val, ~val};
-	send(buf, 2);
+	sendbuf(buf, 2);
 }
 
 int recvdata(char *buf) {
@@ -153,12 +153,12 @@ int recvdata(char *buf) {
 	if (cnt == -1) return -1;
 	int len = (cnt + 1) << 2;
 	uint32_t crc;
-	return recv(buf, len) && recv((char *)&crc, 4) && crc32(buf, len) == crc ? len : -1;
+	return recvbuf(buf, len) && recvbuf((char *)&crc, 4) && crc32(buf, len) == crc ? len : -1;
 }
 
 void senddata(const char *buf, int len) {
 	uint32_t crc = crc32(buf, len);
 	sendval((len >> 2) - 1);
-	send(buf, len);
-	send((char *)&crc, 4);
+	sendbuf(buf, len);
+	sendbuf((char *)&crc, 4);
 }

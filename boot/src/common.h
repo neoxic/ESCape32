@@ -38,8 +38,8 @@ extern char _rom[], _rom_end[], _ram_end[]; // Linker exports
 void init(void);
 void initio(void);
 
-int recv(char *buf, int len);
-void send(const char *buf, int len);
+int recvbuf(char *buf, int len);
+void sendbuf(const char *buf, int len);
 int recvval(void);
 void sendval(int val);
 int recvdata(char *buf);
