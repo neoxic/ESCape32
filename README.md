@@ -17,7 +17,6 @@ Features
 + Temperature/voltage/current protection
 + Variable PWM frequency, active freewheeling
 + Customizable startup music
-+ Configuration via CLI using a USB-TTL adapter or Betaflight passthrough
 
 
 Installation

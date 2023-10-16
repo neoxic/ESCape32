@@ -21,37 +21,37 @@
 	XX( 0, val, arm) \
 	XX( 1, val, damp) \
 	XX( 2, val, revdir) \
-	XX( 3, val, timing) \
-	XX( 4, val, sine_range) \
-	XX( 5, val, sine_power) \
-	XX( 6, val, freq_min) \
-	XX( 7, val, freq_max) \
-	XX( 8, val, duty_min) \
-	XX( 9, val, duty_max) \
-	XX(10, val, duty_spup) \
-	XX(11, val, duty_ramp) \
-	XX(12, val, duty_rate) \
-	XX(13, val, duty_drag) \
-	XX(14, val, throt_mode) \
-	XX(15, val, throt_set) \
-	XX(16, val, throt_cal) \
-	XX(17, val, throt_min) \
-	XX(18, val, throt_mid) \
-	XX(19, val, throt_max) \
-	XX(20, val, input_mode) \
-	XX(21, val, input_chid) \
-	XX(22, val, telem_mode) \
-	XX(23, val, telem_phid) \
-	XX(24, val, telem_poles) \
-	XX(25, val, prot_temp) \
-	XX(26, val, prot_volt) \
-	XX(27, val, prot_cells) \
-	XX(28, val, prot_curr) \
-	XX(29, str, music) \
-	XX(30, val, volume) \
-	XX(31, val, beacon) \
-	XX(32, val, led) \
-	XX(33, val, brushed) \
+	XX( 3, val, brushed) \
+	XX( 4, val, timing) \
+	XX( 5, val, sine_range) \
+	XX( 6, val, sine_power) \
+	XX( 7, val, freq_min) \
+	XX( 8, val, freq_max) \
+	XX( 9, val, duty_min) \
+	XX(10, val, duty_max) \
+	XX(11, val, duty_spup) \
+	XX(12, val, duty_ramp) \
+	XX(13, val, duty_rate) \
+	XX(14, val, duty_drag) \
+	XX(15, val, throt_mode) \
+	XX(16, val, throt_set) \
+	XX(17, val, throt_cal) \
+	XX(18, val, throt_min) \
+	XX(19, val, throt_mid) \
+	XX(20, val, throt_max) \
+	XX(21, val, input_mode) \
+	XX(22, val, input_chid) \
+	XX(23, val, telem_mode) \
+	XX(24, val, telem_phid) \
+	XX(25, val, telem_poles) \
+	XX(26, val, prot_temp) \
+	XX(27, val, prot_volt) \
+	XX(28, val, prot_cells) \
+	XX(29, val, prot_curr) \
+	XX(30, str, music) \
+	XX(31, val, volume) \
+	XX(32, val, beacon) \
+	XX(33, val, led) \
 
 static int beep = -1;
 

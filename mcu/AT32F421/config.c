@@ -55,7 +55,7 @@ void init(void) {
 	GPIOB_MODER = 0xffffeffa; // B0 (TIM1_CH2N), B1 (TIM1_CH3N), B6 (USART1_TX)
 #ifndef ANALOG
 	RCC_APB2ENR |= RCC_APB2ENR_TIM15EN;
-	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
+	GPIOA_PUPDR |= 0x80000010; // A2 (pull-up), A15 (pull-down)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
 #endif
 
@@ -171,6 +171,9 @@ void io_serial(void) {
 	RCC_APB2ENR &= ~RCC_APB2ENR_TIM15EN;
 	RCC_APB1ENR |= RCC_APB1ENR_USART2EN;
 	GPIOA_AFRL |= 0x100; // A2 (USART2_TX)
+	GPIOA_AFRH |= 0x10000000; // A15 (USART2_RX)
+	GPIOA_MODER |= 0x80000000; // In case A15 is LED
+	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 }
 
 void io_analog(void) {

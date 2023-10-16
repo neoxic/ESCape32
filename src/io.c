@@ -75,7 +75,7 @@ static void entryirq(void) {
 #ifdef IO_PA2
 		io_serial();
 		USART2_BRR = CLK_CNT(38400);
-		USART2_CR3 = USART_CR3_HDSEL;
+		if (!(GPIOA_IDR & 0x8000)) USART2_CR3 = USART_CR3_HDSEL; // A15 low
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 #else
 		TIM3_CCER = 0;
@@ -202,13 +202,13 @@ static void servoirq(void) {
 	int w = TIM_CCR2(IOTIM); // Pulse width
 	if (p < 2000) return; // Invalid signal
 	if (w >= 28 && w <= 32) { // Telemetry request
-		telreq = 1;
 		IWDG_KR = IWDG_KR_RESET;
+		telreq = 1;
 		return;
 	}
 	if (w < 800 || w > 2200) return; // Invalid signal
-	servoval(w);
 	IWDG_KR = IWDG_KR_RESET;
+	servoval(w);
 }
 
 static void dshotirq(void) {
@@ -491,10 +491,10 @@ static void throtdma(void) {
 		resync();
 		return;
 	}
+	IWDG_KR = IWDG_KR_RESET;
 	x &= 0xfff;
 	if (x & 0x800) x -= 0x1000; // Propagate sign
 	throt = x;
-	IWDG_KR = IWDG_KR_RESET;
 }
 
 static void ibusdma(void) {
@@ -520,8 +520,8 @@ static void ibusdma(void) {
 		u -= a + b;
 		if (i == n) x = v & 0xfff;
 	}
-	servoval(x);
 	IWDG_KR = IWDG_KR_RESET;
+	servoval(x);
 }
 
 static void sbusdma(void) {
@@ -529,6 +529,7 @@ static void sbusdma(void) {
 		resync();
 		return;
 	}
+	IWDG_KR = IWDG_KR_RESET;
 	int n = cfg.input_chid - 1;
 	int i = (n * 11) >> 3;
 	int a = (n * 3) & 7;
@@ -540,7 +541,6 @@ static void sbusdma(void) {
 		x < 946 ? scale(x, 240, 946, -2000, 0):
 		x > 1101 ? scale(x, 1101, 1807, 0, 2000): 0:
 		x > 318 ? scale(x, 318, 1807, 0, 2000): 0;
-	IWDG_KR = IWDG_KR_RESET;
 }
 
 static void cliirq(void) {
@@ -569,7 +569,7 @@ static void cliirq(void) {
 	if (USART2_ISR & USART_ISR_FE || i == sizeof iobuf - 1) WWDG_CR = WWDG_CR_WDGA; // Data error
 	char b = USART2_RDR; // Clear RXNE
 	if (b == '\b' || b == 0x7f) { // Backspace
-		if (i > 0) --i;
+		if (i) --i;
 		return;
 	}
 	iobuf[i++] = b;
@@ -628,7 +628,7 @@ static void cliirq(void) {
 			TIM3_DIER = TIM_DIER_CC2IE;
 			n = 0;
 			if (b == '\b' || b == 0x7f) { // Backspace
-				if (i > 0) --i;
+				if (i) --i;
 				break;
 			}
 			iobuf[i++] = b;

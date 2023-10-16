@@ -66,6 +66,7 @@ typedef struct {
 	char arm;
 	char damp;
 	char revdir;
+	char brushed;
 	char timing;
 	char sine_range;
 	char sine_power;
@@ -92,11 +93,10 @@ typedef struct {
 	char prot_volt;
 	char prot_cells;
 	char prot_curr;
-	char music[128];
+	char music[256];
 	char volume;
 	char beacon;
 	char led;
-	char brushed;
 } Cfg;
 
 typedef struct {

@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 7
+#define REVISION 8
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -27,6 +27,7 @@ const Cfg cfgdata = {
 	.arm = ARM,                 // Wait for 250ms zero throttle on startup
 	.damp = DAMP,               // Complementary PWM (active freewheeling)
 	.revdir = REVDIR,           // Reversed motor direction
+	.brushed = BRUSHED,         // Brushed mode
 	.timing = TIMING,           // Motor timing (3.75*X degrees) [1..7]
 	.sine_range = SINE_RANGE,   // Sine startup range (%) [0 - off, 5..25]
 	.sine_power = SINE_POWER,   // Sine startup power (%) [1..15]
@@ -57,7 +58,6 @@ const Cfg cfgdata = {
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
 	.led = LED,                 // LED bits
-	.brushed = BRUSHED,         // Brushed mode
 };
 
 __attribute__((__section__(".cfg")))
@@ -68,7 +68,7 @@ char analog, telreq, flipdir, beacon, dshotext;
 volatile uint32_t tickms;
 
 static int step, sine, sync, ival;
-static char prep, accl, tick, reverse, ready;
+static char prep, accl, tick, reverse, ready, brushed;
 
 static void reset(void) {
 	__disable_irq();
@@ -89,7 +89,7 @@ static void resync(void) {
 	sync = 0;
 	accl = 0;
 	ival = 10000;
-	ertm = 100000000;
+	ertm = 60000000;
 }
 #endif
 
@@ -105,14 +105,21 @@ static void resync(void) {
 */
 
 static void nextstep(void) {
-	if (cfg.brushed) {
+#ifndef SENSORED
+	if (brushed) {
 		int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 		int m2 = TIM_CCMR2_OC3PE;
-#ifdef INVERTED_HIGH
-		int er = TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#ifdef PWM_ENABLE
+		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+		if (reverse) {
+			m1 |= TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_PWM1;
+			m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+		} else {
+			m1 |= TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
+			m2 |= TIM_CCMR2_OC3M_PWM1;
+		}
 #else
 		int er = 0;
-#endif
 		if (reverse) {
 			m1 |= TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_PWM1;
 			m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
@@ -124,6 +131,13 @@ static void nextstep(void) {
 			er |= TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
 			if (cfg.damp) er |= TIM_CCER_CC1NE | TIM_CCER_CC3NE;
 		}
+#endif
+#ifdef INVERTED_HIGH
+		er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+		er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
 		TIM1_CCMR1 = m1;
 		TIM1_CCMR2 = m2;
 		TIM1_CCER = er;
@@ -131,7 +145,6 @@ static void nextstep(void) {
 		sync = 6;
 		return;
 	}
-#ifndef SENSORED
 	if (sine) { // Sine startup
 		IFTIM_OCR = sine;
 		TIM_ARR(IFTIM) = sine;
@@ -154,11 +167,18 @@ static void nextstep(void) {
 		if (prep) return;
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
-#ifdef INVERTED_HIGH
-		TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#ifdef PWM_ENABLE
+		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
 #else
-		TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
 #endif
+#ifdef INVERTED_HIGH
+		er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+		er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+		TIM1_CCER = er;
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		TIM_DIER(IFTIM) = 0;
 		compctl(0);
@@ -185,23 +205,31 @@ static void nextstep(void) {
 	int z = (step & 1) ^ reverse; // BEMF rising
 	int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 	int m2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_PWM1;
-#ifdef INVERTED_HIGH
-	int er = TIM_CCER_CC4E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#else
 	int er = TIM_CCER_CC4E;
-#endif
 #ifndef SENSORED
 	int cc = z ? 4 : 0;
 #endif
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC1NE | TIM_CCER_CC1E : TIM_CCER_CC1E;
+#ifdef PWM_ENABLE
+		er |= TIM_CCER_CC1E;
+#else
+		er |= cfg.damp ? TIM_CCER_CC1E | TIM_CCER_CC1NE : TIM_CCER_CC1E;
+#endif
 	} else if (n & 1) {
+#ifdef PWM_ENABLE
+		m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
+#else
 		m1 |= TIM_CCMR1_OC1M_FORCE_HIGH;
+#endif
 		er |= TIM_CCER_CC1NE;
 	} else {
 		if (!z) {
+#ifdef PWM_ENABLE
+			m1 |= TIM_CCMR1_OC1M_FORCE_HIGH;
+#else
 			m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
+#endif
 			er |= TIM_CCER_CC1NE;
 		}
 #ifndef SENSORED
@@ -210,13 +238,25 @@ static void nextstep(void) {
 	}
 	if (p & 2) {
 		m1 |= TIM_CCMR1_OC2M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC2NE | TIM_CCER_CC2E : TIM_CCER_CC2E;
+#ifdef PWM_ENABLE
+		er |= TIM_CCER_CC2E;
+#else
+		er |= cfg.damp ? TIM_CCER_CC2E | TIM_CCER_CC2NE : TIM_CCER_CC2E;
+#endif
 	} else if (n & 2) {
+#ifdef PWM_ENABLE
+		m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
+#else
 		m1 |= TIM_CCMR1_OC2M_FORCE_HIGH;
+#endif
 		er |= TIM_CCER_CC2NE;
 	} else {
 		if (!z) {
+#ifdef PWM_ENABLE
+			m1 |= TIM_CCMR1_OC2M_FORCE_HIGH;
+#else
 			m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
+#endif
 			er |= TIM_CCER_CC2NE;
 		}
 #ifndef SENSORED
@@ -225,19 +265,37 @@ static void nextstep(void) {
 	}
 	if (p & 4) {
 		m2 |= TIM_CCMR2_OC3M_PWM1;
-		er |= cfg.damp ? TIM_CCER_CC3NE | TIM_CCER_CC3E : TIM_CCER_CC3E;
+#ifdef PWM_ENABLE
+		er |= TIM_CCER_CC3E;
+#else
+		er |= cfg.damp ? TIM_CCER_CC3E | TIM_CCER_CC3NE : TIM_CCER_CC3E;
+#endif
 	} else if (n & 4) {
+#ifdef PWM_ENABLE
+		m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+#else
 		m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
+#endif
 		er |= TIM_CCER_CC3NE;
 	} else {
 		if (!z) {
+#ifdef PWM_ENABLE
+			m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
+#else
 			m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+#endif
 			er |= TIM_CCER_CC3NE;
 		}
 #ifndef SENSORED
 		cc |= 3;
 #endif
 	}
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
 	TIM1_CCER = er;
@@ -274,15 +332,28 @@ static void nextstep(void) {
 }
 
 static void laststep(void) {
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+#else
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
+#endif
+	int er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+	TIM1_CCER = er;
 	TIM1_EGR = TIM_EGR_COMG;
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM2;
+	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2;
+#else
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
-#ifdef INVERTED_HIGH
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#else
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
 #endif
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 #ifndef SENSORED
@@ -404,6 +475,7 @@ static void beep(void) {
 void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
+	brushed = cfg.brushed;
 	throt = cfg.throt_set * 20;
 #if defined ANALOG || defined ANALOG_PIN
 	analog = IO_ANALOG;
@@ -473,7 +545,7 @@ void main(void) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		__WFI();
 		int input = throt;
-		int range = cfg.sine_range * 20;
+		int range = brushed ? 0 : cfg.sine_range * 20;
 		int margin = range && sine ? 20 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
@@ -539,7 +611,7 @@ void main(void) {
 			if (++r == 8) r = 0;
 			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration slew rate limiting
 		}
-		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, cfg.brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
+		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = arr;
 		TIM1_CCR1 = ccr;
@@ -550,7 +622,7 @@ void main(void) {
 		if (running && !step) { // Start motor
 			__disable_irq();
 			ival = 10000;
-			ertm = 100000000;
+			ertm = 60000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 			TIM1_DIER |= TIM_DIER_COMIE;

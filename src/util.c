@@ -63,15 +63,21 @@ void checkcfg(void) {
 #endif
 	cfg.arm = !!cfg.arm;
 #endif
+#ifdef PWM_ENABLE
+	cfg.damp = 1;
+#else
 	cfg.damp = !!cfg.damp;
+#endif
 	cfg.revdir = !!cfg.revdir;
 #ifdef SENSORED
+	cfg.brushed = 0;
 	cfg.timing = 0;
 	cfg.sine_range = 0;
 	cfg.sine_power = 0;
 #else
+	cfg.brushed = !!cfg.brushed;
 	cfg.timing = clamp(cfg.timing, 1, 7);
-	cfg.sine_range = cfg.damp && cfg.sine_range && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
+	cfg.sine_range = cfg.damp && cfg.sine_range ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
 #endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
@@ -120,7 +126,6 @@ void checkcfg(void) {
 #else
 	cfg.led = 0;
 #endif
-	cfg.brushed = !!cfg.brushed;
 }
 
 int savecfg(void) {
@@ -174,40 +179,77 @@ int resetcfg(void) {
 int playmusic(const char *str, int vol) {
 	static const uint16_t arr[] = {30575, 28859, 27240, 25713, 24268, 22906, 21621, 20407, 19261, 18181, 17160, 16196, 15287};
 	static char flag;
+	char *end;
+	int tmp = strtol(str, &end, 10); // Tempo
+	if (str == end) tmp = 125; // 120BPM by default
+	else {
+		if (tmp < 10 || tmp > 999) return 0; // Sanity check
+		tmp = 15000 / tmp;
+		str = end;
+	}
 	if (!vol || ertm || flag) return 0;
 	flag = 1;
 	vol <<= 1;
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
+	int er = TIM_CCER_CC2E;
+#else
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
-#ifdef INVERTED_HIGH
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC2E | TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#else
-	TIM1_CCER = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE | TIM_CCER_CC2E;
+	int er = TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
 #endif
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+	TIM1_CCER = er;
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 8MHz
-	for (int a, b; (a = *str++);) {
+	for (int a, b, c = 0; (a = *str++);) {
 		if (a >= 'a' && a <= 'g') a -= 'c', b = 0; // Low note
 		else if (a >= 'A' && a <= 'G') a -= 'C', b = 1; // High note
-		else if (a == '_') goto set; // Pause
-		else break;
+		else if (a == '_') goto update; // Pause
+		else {
+			if (a == '+' && !c++) continue; // Octave up
+			if (a == '-' && c--) continue; // Octave down
+			break; // Invalid specifier
+		}
 		a = (a + 7) % 7 << 1;
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
-		TIM1_ARR = arr[a] >> b; // Frequency
+		TIM1_ARR = arr[a] >> (b + c); // Frequency
 		TIM1_CCR2 = vol; // Volume
-	set:
+	update:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
-		a = *str;
-		if (a >= '1' && a <= '8') a -= '0', ++str;
-		else a = 1;
-		for (uint32_t t = tickms + a * 125; t != tickms;) { // Duration 125*X ms
-			if (TIM14_CR1 & TIM_CR1_CEN) TIM14_EGR = TIM_EGR_UG; // Reset arming timeout
-			IWDG_KR = IWDG_KR_RESET;
+		a = strtol(str, &end, 10); // Duration
+		if (str == end) a = 1;
+		else {
+			if (a < 1 || a > 99) break; // Sanity check
+			str = end;
+		}
+		for (uint32_t t = tickms + tmp * a; t != tickms;) {
+			if (!(TIM14_CR1 & TIM_CR1_CEN)) continue;
+			TIM14_EGR = TIM_EGR_UG; // Reset arming timeout
 		}
 		TIM1_CCR2 = 0; // Preload silence
 	}
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+#else
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
+#endif
+	er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+	TIM1_CCER = er;
 	TIM1_PSC = 0;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
