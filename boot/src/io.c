@@ -31,8 +31,17 @@
 
 void initio(void) {
 #ifdef IO_PA2
+	TIM14_ARR = CLK_CNT(20000) - 1;
+	TIM14_EGR = TIM_EGR_UG;
+	TIM14_CR1 = TIM_CR1_CEN;
+	TIM14_SR = ~TIM_SR_UIF;
 	USART2_BRR = CLK_CNT(38400);
-	if (!(GPIOA_IDR & 0x8000)) USART2_CR3 = USART_CR3_HDSEL; // A15 low
+	while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 50us high level on AUX
+		if (!(GPIOA_IDR & 0x8000)) { // A15 low
+			USART2_CR3 = USART_CR3_HDSEL;
+			break;
+		}
+	}
 	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 #else
 	TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
@@ -43,9 +52,8 @@ void initio(void) {
 	TIM3_EGR = TIM_EGR_UG;
 	TIM3_CR1 = TIM_CR1_CEN;
 #endif
-	TIM14_PSC = CLK / 10000 - 1; // 0.1ms resolution
+	TIM14_PSC = CLK_CNT(10000) - 1; // 0.1ms resolution
 	TIM14_ARR = 4999; // 500ms I/O timeout
-	TIM14_CR1 = TIM_CR1_URS;
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
 }

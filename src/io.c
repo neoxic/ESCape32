@@ -98,6 +98,8 @@ static void entryirq(void) {
 		analog = 1;
 		return;
 	}
+	int t = TIM_CCR1(IOTIM); // Time between two rising edges
+	if (!n++) return; // First capture is always invalid
 	IWDG_KR = IWDG_KR_START;
 #ifdef IO_PA2
 	if (cfg.input_mode >= 2) {
@@ -128,8 +130,6 @@ static void entryirq(void) {
 		return;
 	}
 #endif
-	int t = TIM_CCR1(IOTIM); // Time between two rising edges
-	if (!n++) return; // First capture is always invalid
 	if (TIM_PSC(IOTIM)) {
 		if (t > 2000) { // Servo/Oneshot125
 			ioirq = calibirq;
