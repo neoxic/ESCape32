@@ -32,8 +32,8 @@
 #define iotim_isr tim3_isr
 #define iodma_isr dma1_channel4_7_dma2_channel3_5_isr
 
-#define USART1_TX_DMA 2
 #define USART1_RX_DMA 3
+#define USART1_TX_DMA 2
 #define usart1_dma_isr dma1_channel2_3_dma2_channel1_2_isr
 
 #define tim1_com_isr tim1_brk_up_trg_com_isr

@@ -65,7 +65,7 @@ void init(void) {
 #ifdef IO_PA2
 	RCC_APBENR2 |= RCC_APBENR2_TIM15EN;
 	GPIOA_AFRL |= 0x500; // A2 (TIM15_CH1)
-	GPIOA_PUPDR |= 0x80000010; // A2 (pull-up), A15 (pull-down)
+	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
 #else
 	RCC_APBENR1 |= RCC_APBENR1_TIM3EN;
@@ -85,9 +85,9 @@ void init(void) {
 	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_LPUART2_IRQ, 0x40);
-	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x40); // TIM3 or TIM15 or USART2
+	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
 	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, 0x80); // USART1
-	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ, 0x80); // ADC
+	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ, 0x40); // TIM3 or TIM15 or USART2
 
 	nvic_enable_irq(NVIC_TIM1_BRK_UP_TRG_COM_IRQ);
 	nvic_enable_irq(NVIC_TIM2_IRQ);
@@ -99,14 +99,14 @@ void init(void) {
 	nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ);
 
+	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_ADC;
+	DMAMUX1_CxCR(2) = DMAMUX_CxCR_DMAREQ_ID_USART1_RX;
+	DMAMUX1_CxCR(3) = DMAMUX_CxCR_DMAREQ_ID_USART1_TX;
 #ifdef IO_PA2
-	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_TIM15_CH1;
+	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_TIM15_CH1;
 #else
-	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_TIM3_CH1;
+	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_TIM3_CH1;
 #endif
-	DMAMUX1_CxCR(2) = DMAMUX_CxCR_DMAREQ_ID_USART1_TX;
-	DMAMUX1_CxCR(3) = DMAMUX_CxCR_DMAREQ_ID_USART1_RX;
-	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_ADC;
 
 	ADC1_CR = ADC_CR_ADVREGEN;
 	TIM16_ARR = CLK_KHZ / 50 - 1;
@@ -128,8 +128,8 @@ void init(void) {
 	ADC1_CHSELR |= 0xfdc << (len << 2); // CH12 (temp), CH13 (vref)
 	len += 2;
 	while (!(ADC1_ISR & ADC_ISR_CCRDY));
-	DMA1_CPAR(4) = (uint32_t)&ADC1_DR;
-	DMA1_CMAR(4) = (uint32_t)buf;
+	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
+	DMA1_CMAR(1) = (uint32_t)buf;
 
 	TIM1_SMCR = TIM_SMCR_TS_ITR1; // TRGI=TIM2
 	TIM2_CR2 = TIM_CR2_MMS_COMPARE_OC3REF; // TRGO=OC3REF
@@ -152,20 +152,20 @@ void initled(void) {
 	TIM16_CR2 = TIM_CR2_CCDS; // CC1 DMA request on UEV
 	TIM16_ARR = CLK_CNT(800000) - 1;
 	TIM16_RCR = 7;
-	DMAMUX1_CxCR(5) = DMAMUX_CxCR_DMAREQ_ID_TIM16_CH1;
-	DMA1_CPAR(5) = (uint32_t)&TIM16_CCR1;
-	DMA1_CMAR(5) = (uint32_t)&buf[5];
+	DMAMUX1_CxCR(6) = DMAMUX_CxCR_DMAREQ_ID_TIM16_CH1;
+	DMA1_CPAR(6) = (uint32_t)&TIM16_CCR1;
+	DMA1_CMAR(6) = (uint32_t)&buf[5];
 }
 
 void ledctl(int x) {
-	if (DMA1_CCR(5) & DMA_CCR_EN) return;
+	if (DMA1_CCR(6) & DMA_CCR_EN) return;
 	buf[5] = x & 2 ? CLK_CNT(1250000) : CLK_CNT(2500000); // Green
 	buf[6] = x & 1 ? CLK_CNT(1250000) : CLK_CNT(2500000); // Red
 	buf[7] = x & 4 ? CLK_CNT(1250000) : CLK_CNT(2500000); // Blue
 	buf[8] = 0;
 	buf[9] = 0;
-	DMA1_CNDTR(5) = 5;
-	DMA1_CCR(5) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
+	DMA1_CNDTR(6) = 5;
+	DMA1_CCR(6) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 	TIM16_DIER = TIM_DIER_CC1DE;
 	TIM16_EGR = TIM_EGR_UG;
 	TIM16_CR1 = TIM_CR1_CEN;
@@ -236,64 +236,66 @@ void compctl(int x) {
 }
 
 void io_serial(void) {
-	TIM15_DIER = 0;
+	RCC_APBRSTR2 = RCC_APBRSTR2_TIM15RST;
+	RCC_APBRSTR2 = 0;
 	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
-	RCC_APBENR2 &= ~RCC_APBENR2_TIM15EN;
 	RCC_APBENR1 |= RCC_APBENR1_USART2EN;
-	GPIOA_AFRL &= ~0xf00;
-	GPIOA_AFRL |= 0x100; // A2 (USART2_TX)
+	GPIOA_AFRL = (GPIOA_AFRL & ~0xf00) | 0x100; // A2 (USART2_TX)
 	GPIOA_AFRH |= 0x10000000; // A15 (USART2_RX)
-	GPIOA_MODER |= 0x80000000; // In case A15 is LED
-	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
-	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_USART2_RX;
+	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_USART2_RX;
+	DMAMUX1_CxCR(5) = DMAMUX_CxCR_DMAREQ_ID_USART2_TX;
 }
 
 #ifdef IO_PA6
 void io_analog(void) {
-	TIM3_DIER = 0;
+	RCC_APBRSTR1 = RCC_APBRSTR1_TIM3RST;
+	RCC_APBRSTR1 = 0;
 	nvic_clear_pending_irq(NVIC_TIM34_IRQ);
-	RCC_APBENR1 &= ~RCC_APBENR1_TIM3EN;
 	GPIOA_PUPDR &= ~0x3000; // A6 (no pull-up/pull-down)
 	GPIOA_MODER |= 0x3000; // A6 (analog)
 }
 #else
 void io_analog(void) {
-	TIM15_DIER = 0;
+	RCC_APBRSTR2 = RCC_APBRSTR2_TIM15RST;
+	RCC_APBRSTR2 = 0;
 	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
-	RCC_APBENR2 &= ~RCC_APBENR2_TIM15EN;
 	GPIOA_PUPDR &= ~0x30; // A2 (no pull-up/pull-down)
 	GPIOA_MODER |= 0x30; // A2 (analog)
 }
 #endif
 
 void adc_trig(void) {
-	if (DMA1_CCR(4) & DMA_CCR_EN) return;
-	DMA1_CNDTR(4) = len;
-	DMA1_CCR(4) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
+	if (DMA1_CCR(1) & DMA_CCR_EN) return;
+	DMA1_CNDTR(1) = len;
+	DMA1_CCR(1) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 	ADC1_CR = ADC_CR_ADSTART;
 }
 
-void dma1_channel4_7_dmamux_isr(void) {
-#ifdef LED_WS2812
-	if (DMA1_ISR & DMA_ISR_TCIF(5)) {
-		DMA1_IFCR = DMA_IFCR_CTCIF(5);
-		DMA1_CCR(5) = 0;
-		TIM16_DIER = 0;
-		TIM16_CR1 = 0;
-		return;
-	}
-#endif
-	DMA1_IFCR = DMA_IFCR_CTCIF(4);
-	DMA1_CCR(4) = 0;
+void dma1_channel1_isr(void) {
+	DMA1_IFCR = DMA_IFCR_CTCIF(1);
+	DMA1_CCR(1) = 0;
 	int i = 0, v = 0, c = 0, x = 0;
 #if SENS_CNT == 2
 	c = buf[i++];
 #endif
-#if SENS_CNT >= 1
+#if SENS_CNT > 0
 	v = buf[i++];
 #endif
 	if (ain) x = buf[i++];
 	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
 	int t = (buf[i] * r / 3000 - ST_TSENSE_CAL1_30C) * 100 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 30;
 	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
+}
+
+void dma1_channel4_7_dmamux_isr(void) {
+#ifdef LED_WS2812
+	if (DMA1_ISR & DMA_ISR_TCIF(6)) {
+		DMA1_IFCR = DMA_IFCR_CTCIF(6);
+		DMA1_CCR(6) = 0;
+		TIM16_DIER = 0;
+		TIM16_CR1 = 0;
+		return;
+	}
+#endif
+	iodma_isr();
 }

@@ -84,9 +84,9 @@ void init(void) {
 }
 
 void io_analog(void) {
-	TIM3_DIER = 0;
+	RCC_APB1RSTR = RCC_APB1RSTR_TIM3RST;
+	RCC_APB1RSTR = 0;
 	nvic_clear_pending_irq(NVIC_TIM3_IRQ);
-	RCC_APB1ENR &= ~RCC_APB1ENR_TIM3EN;
 	GPIOA_PUPDR &= ~0x3000; // A6 (no pull-up/pull-down)
 	GPIOA_MODER |= 0x3000; // A6 (analog)
 }

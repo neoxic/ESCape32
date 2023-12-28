@@ -22,9 +22,8 @@
 #define USART2_RDR USART2_DR
 #define USART2_ISR USART2_SR
 #define USART_CR1_M0 USART_CR1_M
-#define USART_CR2_RXINV 0
-#define USART_CR2_TXINV 0
 #define USART_ISR_FE USART_SR_FE
+#define USART_ISR_NF USART_SR_NE
 #endif
 
 static void entryirq(void);
@@ -34,10 +33,11 @@ static void dshotirq(void);
 static void dshotdma(void);
 static void cliirq(void);
 #ifdef IO_PA2
-static void syncirq(void);
-static void throtdma(void);
+static void serialirq(void);
+static void serialdma(void);
 static void ibusdma(void);
 static void sbusdma(void);
+static void crsfirq(void);
 static char rxlen;
 #endif
 
@@ -74,8 +74,25 @@ static void entryirq(void) {
 		ioirq = cliirq;
 #ifdef IO_PA2
 		io_serial();
+		int r1 = GPIOA_ODR;
+		int r2 = GPIOA_PUPDR;
+		int r3 = GPIOA_MODER;
+		GPIOA_ODR = r1 & ~0x8000; // In case A15 is output
+		GPIOA_PUPDR = r2 | 0x80000000; // A15 (pull-down)
+		GPIOA_MODER = (r3 | 0xc0000000) & ~0x40000000; // A15 (USART2_RX)
+		TIM15_ARR = CLK_CNT(20000) - 1;
+		TIM15_EGR = TIM_EGR_UG;
+		TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+		while (TIM15_CR1 & TIM_CR1_CEN) { // Wait for 50us high level on A15
+			if (!(GPIOA_IDR & 0x8000)) { // A15 low
+				GPIOA_ODR = r1;
+				GPIOA_PUPDR = r2;
+				GPIOA_MODER = r3;
+				USART2_CR3 = USART_CR3_HDSEL;
+				break;
+			}
+		}
 		USART2_BRR = CLK_CNT(38400);
-		if (!(GPIOA_IDR & 0x8000)) USART2_CR3 = USART_CR3_HDSEL; // A15 low
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 #else
 		TIM3_CCER = 0;
@@ -103,30 +120,45 @@ static void entryirq(void) {
 	IWDG_KR = IWDG_KR_START;
 #ifdef IO_PA2
 	if (cfg.input_mode >= 2) {
-		ioirq = syncirq;
+		ioirq = serialirq;
 		io_serial();
-		USART2_BRR = CLK_CNT(115200);
 		switch (cfg.input_mode) {
-			case 2: // Serial throttle
-				iodma = throtdma;
-				rxlen = 2;
+			case 2: // Serial
+				iodma = serialdma;
+				rxlen = 4;
+				USART2_BRR = CLK_CNT(SERIAL_BR);
 				break;
 			case 3: // iBUS
 				iodma = ibusdma;
 				rxlen = 32;
+				USART2_BRR = CLK_CNT(115200);
 				break;
-			case 4: // SBUS
+			case 4: // SBUS/SBUS2
 				iodma = sbusdma;
 				rxlen = 25;
 				USART2_BRR = CLK_CNT(100000);
 				USART2_CR1 = USART_CR1_PCE | USART_CR1_M0;
-				USART2_CR2 = USART_CR2_STOPBITS_2 | USART_CR2_RXINV | USART_CR2_TXINV;
+				USART2_CR2 = USART_CR2_STOPBITS_2;
+#ifndef USARTv1
+				USART2_CR2 |= USART_CR2_RXINV | USART_CR2_TXINV;
+				GPIOA_PUPDR = (GPIOA_PUPDR & ~0x30) | 0x20; // A2 (pull-down)
+#endif
+				TIM15_PSC = CLK_MHZ / 8 - 1; // 8MHz
+				TIM15_ARR = -1;
+				TIM15_EGR = TIM_EGR_UG;
+				TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
+				break;
+			case 5: // CRSF
+				ioirq = crsfirq;
+				USART2_BRR = CLK_CNT(416666);
 				break;
 		}
 		USART2_CR3 = USART_CR3_HDSEL;
-		USART2_CR1 |= USART_CR1_UE | USART_CR1_RE | USART_CR1_IDLEIE;
+		USART2_CR1 |= USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE;
 		DMA1_CPAR(USART2_RX_DMA) = (uint32_t)&USART2_RDR;
 		DMA1_CMAR(USART2_RX_DMA) = (uint32_t)iobuf;
+		DMA1_CPAR(USART2_TX_DMA) = (uint32_t)&USART2_TDR;
+		DMA1_CMAR(USART2_TX_DMA) = (uint32_t)&iobuf;
 		return;
 	}
 #endif
@@ -288,9 +320,8 @@ static void dshotdma(void) {
 		DMA1_CNDTR(IOTIM_DMA) = 23;
 		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		if (!dshotval) {
-			int a = ertm ? ertm : 65408;
+			int a = ertm ? min(ertm, 65408) : 65408;
 			int b = 0;
-			if (a > 65408) a = 65408;
 			while (a > 511) a >>= 1, ++b;
 			dshotval = a | b << 9;
 		}
@@ -304,12 +335,11 @@ static void dshotdma(void) {
 		dshotbuf[0] = -1;
 		dshotbuf[21] = 0;
 		dshotbuf[22] = 0;
-		__disable_irq();
-		int arr = CLK_CNT(33333) - TIM_CNT(IOTIM) - 1; // Calculate 30us output delay
-		if (arr < 99) arr = 99; // Sanity check
-		TIM_ARR(IOTIM) = arr; // Preload output delay
 		TIM_CCR1(IOTIM) = 0; // Preload high level
+		__disable_irq();
+		TIM_ARR(IOTIM) = max(CLK_CNT(33333) - TIM_CNT(IOTIM) - 1, 99); // 30us output delay
 		TIM_EGR(IOTIM) = TIM_EGR_UG; // Update registers and trigger DMA to preload the first bit
+		TIM_EGR(IOTIM); // Ensure UEV has happened
 		TIM_ARR(IOTIM) = dshotarr2; // Preload bit time
 		__enable_irq();
 		if (!rep || !--rep) dshotval = 0;
@@ -461,19 +491,6 @@ void usart2_isr(void) {
 	ioirq();
 }
 
-static void syncirq(void) {
-#ifdef USARTv1
-	USART2_SR, USART2_DR; // Clear flags
-#else
-	USART2_RQR = USART_RQR_RXFRQ; // Clear RXNE
-	USART2_ICR = USART_ICR_IDLECF | USART_ICR_ORECF;
-#endif
-	USART2_CR1 &= ~USART_CR1_IDLEIE;
-	USART2_CR3 = USART_CR3_HDSEL | USART_CR3_DMAR;
-	DMA1_CNDTR(USART2_RX_DMA) = rxlen;
-	DMA1_CCR(USART2_RX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
-}
-
 static void resync(void) {
 #ifdef USARTv1
 	USART2_SR, USART2_DR; // Clear flags
@@ -485,16 +502,88 @@ static void resync(void) {
 	DMA1_CCR(USART2_RX_DMA) = 0;
 }
 
-static void throtdma(void) {
-	int x = iobuf[0] | iobuf[1] << 8;
-	if (dshotcrc(x, 0)) { // Invalid checksum
+static void serialirq(void) {
+	if (USART2_CR1 & USART_CR1_TCIE) {
+		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+		return;
+	}
+#ifdef USARTv1
+	USART2_SR, USART2_DR; // Clear flags
+#else
+	USART2_RQR = USART_RQR_RXFRQ; // Clear RXNE
+	USART2_ICR = USART_ICR_IDLECF | USART_ICR_ORECF;
+#endif
+	USART2_CR1 &= ~USART_CR1_IDLEIE;
+	USART2_CR3 = USART_CR3_HDSEL | USART_CR3_DMAT | USART_CR3_DMAR;
+	DMA1_CNDTR(USART2_RX_DMA) = rxlen;
+	DMA1_CCR(USART2_RX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+}
+
+static int serialresp(int x) {
+	iobuf[0] = x;
+	iobuf[1] = x >> 8;
+	iobuf[2] = crc8(iobuf, 2);
+	return 3;
+}
+
+static int serialreq(char a, int x) {
+	switch (a & 0xf) {
+		case 0x1: // Throttle
+			if (x & 0x8000) x -= 0x10000; // Propagate sign
+			if (x < -2000 || x > 2000) break;
+			throt = x;
+			break;
+		case 0x2: // Reversed motor direction
+			cfg.revdir = !!x;
+			break;
+		case 0x3: // Drag brake amount
+			cfg.duty_drag = min(x, 100);
+			break;
+#if LED_CNT > 0
+		case 0x4: // LED
+			cfg.led = x & ((1 << LED_CNT) - 1);
+			break;
+#endif
+	}
+	switch (a >> 4) {
+		case 0x8: // Combined telemetry
+			iobuf[0] = temp;
+			iobuf[1] = volt;
+			iobuf[2] = volt >> 8;
+			iobuf[3] = curr;
+			iobuf[4] = curr >> 8;
+			iobuf[5] = csum;
+			iobuf[6] = csum >> 8;
+			iobuf[7] = x = min(ertm, 0xffff);
+			iobuf[8] = x >> 8;
+			iobuf[9] = crc8(iobuf, 9);
+			return 10;
+		case 0x9: return serialresp(min(ertm, 0xffff)); // Electrical revolution time (us)
+		case 0xa: return serialresp(temp); // Temperature (C)
+		case 0xb: return serialresp(volt); // Voltage (V/100)
+		case 0xc: return serialresp(curr); // Current (A/100)
+		case 0xd: return serialresp(csum); // Consumption (mAh)
+	}
+	return 0;
+}
+
+static void serialdma(void) {
+	if (crc8(iobuf, 4)) { // Invalid checksum
 		resync();
 		return;
 	}
 	IWDG_KR = IWDG_KR_RESET;
-	x &= 0xfff;
-	if (x & 0x800) x -= 0x1000; // Propagate sign
-	throt = x;
+	int len = serialreq(iobuf[0], iobuf[1] | iobuf[2] << 8);
+	if (!len) return;
+#ifdef USARTv1
+	USART2_SR = ~USART_SR_TC;
+#else
+	USART2_ICR = USART_ICR_TCCF;
+#endif
+	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_TCIE;
+	DMA1_CCR(USART2_TX_DMA) = 0;
+	DMA1_CNDTR(USART2_TX_DMA) = len;
+	DMA1_CCR(USART2_TX_DMA) = DMA_CCR_EN | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
 static void ibusdma(void) {
@@ -524,23 +613,119 @@ static void ibusdma(void) {
 	servoval(x);
 }
 
-static void sbusdma(void) {
-	if (iobuf[0] != 0x0f) { // Invalid frame
-		resync();
-		return;
-	}
-	IWDG_KR = IWDG_KR_RESET;
+static void sbusvals(const char *buf) {
 	int n = cfg.input_chid - 1;
 	int i = (n * 11) >> 3;
 	int a = (n * 3) & 7;
 	int b = ((n + 1) * 3) & 7;
 	int x = a < b ?
-		iobuf[i + 1] >> a | (iobuf[i + 2] & ((1 << b) - 1)) << (8 - a):
-		iobuf[i + 1] >> a | iobuf[i + 2] << (8 - a) | (iobuf[i + 3] & ((1 << b) - 1)) << a;
-	throt = cfg.throt_mode ?
-		x < 946 ? scale(x, 240, 946, -2000, 0):
-		x > 1101 ? scale(x, 1101, 1807, 0, 2000): 0:
-		x > 318 ? scale(x, 318, 1807, 0, 2000): 0;
+		buf[i] >> a | (buf[i + 1] & ((1 << b) - 1)) << (8 - a):
+		buf[i] >> a | buf[i + 1] << (8 - a) | (buf[i + 2] & ((1 << b) - 1)) << (16 - a);
+	servoval((x * 5 >> 3) + 880);
+}
+
+static void sbusrx(void) {
+	TIM15_SR = ~TIM_SR_UIF;
+	TIM15_DIER = 0;
+	TIM15_ARR = -1;
+	TIM15_EGR = TIM_EGR_UG;
+	USART2_CR1 = USART_CR1_PCE | USART_CR1_M0 | USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
+	ioirq = serialirq;
+}
+
+static void sbustx(void) {
+	static const char slot[] = {
+		0xc3, 0x23, 0xa3, 0x63, 0xe3, // 3..7
+		0xd3, 0x33, 0xb3, 0x73, 0xf3, // 11..15
+		0xcb, 0x2b, 0xab, 0x6b, 0xeb, // 19..23
+		0xdb, 0x3b, 0xbb, 0x7b, 0xfb, // 27..31
+	};
+	static int n;
+	int a = 0, b = 0;
+	TIM15_SR = ~TIM_SR_UIF;
+	switch (n) {
+		case 0: // SBS-01T (temperature)
+			a = temp + 100;
+			b = a >> 8 | 0x80;
+			break;
+		case 1: // SBS-01R (RPM)
+			a = min(erpm / (6 * cfg.telem_poles >> 1), 0xffff);
+			b = a >> 8;
+			break;
+		case 2: // SBS-01C (current)
+			b = curr;
+			a = b >> 8 | 0x40;
+			break;
+		case 3: // SBS-01C (voltage)
+			b = volt;
+			a = b >> 8;
+			break;
+		case 4: // SBS-01C (consumption)
+			b = csum;
+			a = b >> 8;
+			break;
+	}
+	iobuf[0] = slot[n + (cfg.telem_phid - 1) * 5];
+	iobuf[1] = a;
+	iobuf[2] = b;
+	DMA1_CCR(USART2_TX_DMA) = 0;
+	DMA1_CNDTR(USART2_TX_DMA) = 3;
+	DMA1_CCR(USART2_TX_DMA) = DMA_CCR_EN | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+	if (++n < 5) return;
+	ioirq = sbusrx;
+	n = 0;
+}
+
+static void sbusdma(void) {
+	if (iobuf[0] != 0x0f) { // Invalid frame
+		resync();
+		return;
+	}
+	TIM15_EGR = TIM_EGR_UG;
+	IWDG_KR = IWDG_KR_RESET;
+	sbusvals(iobuf + 1);
+	int a = iobuf[24];
+	if ((a & 0xf) != 0x4) return; // No telemetry
+	if (telmode == 2 || telmode == 3 || a >> 4 != cfg.telem_phid - 1) { // Disable RX for 7280us (2000+660*8)
+		ioirq = sbusrx;
+		__disable_irq();
+		TIM15_ARR = 58239 - TIM15_CNT;
+		TIM15_EGR = TIM_EGR_UG;
+		__enable_irq();
+	} else { // Delay TX for 3980us (2000+660*3)
+		ioirq = sbustx;
+		__disable_irq();
+		TIM15_ARR = 31839 - TIM15_CNT;
+		TIM15_EGR = TIM_EGR_UG;
+		TIM15_EGR; // Ensure UEV has happened
+		TIM15_ARR = 5279; // Preload slot interval
+		__enable_irq();
+	}
+	TIM15_SR = ~TIM_SR_UIF;
+	TIM15_DIER = TIM_DIER_UIE;
+	USART2_CR1 = USART_CR1_PCE | USART_CR1_M0 | USART_CR1_UE | USART_CR1_TE;
+}
+
+static void crsfirq(void) {
+#ifdef USARTv1
+	USART2_SR, USART2_DR; // Clear flags
+#else
+	USART2_RQR = USART_RQR_RXFRQ; // Clear RXNE
+	USART2_ICR = USART_ICR_IDLECF | USART_ICR_ORECF;
+#endif
+	if (USART2_CR1 & USART_CR1_RXNEIE) { // Read until idle
+		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE;
+		return;
+	}
+	int len = 64 - DMA1_CNDTR(USART2_RX_DMA);
+	USART2_CR3 = USART_CR3_HDSEL | USART_CR3_DMAT | USART_CR3_DMAR;
+	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
+	DMA1_CCR(USART2_RX_DMA) = 0;
+	DMA1_CNDTR(USART2_RX_DMA) = 64;
+	DMA1_CCR(USART2_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+	if (len != 26 || iobuf[1] != 0x18 || iobuf[2] != 0x16 || crc8dvbs2(iobuf + 2, 24)) return; // Invalid frame
+	IWDG_KR = IWDG_KR_RESET;
+	sbusvals(iobuf + 3);
 }
 
 static void cliirq(void) {
@@ -549,24 +734,16 @@ static void cliirq(void) {
 	if (cr & USART_CR1_TXEIE) {
 		USART2_TDR = iobuf[i++]; // Clear TXE+TC
 		if (i < j) return;
-#ifdef USARTv1
-		USART2_SR = ~USART_SR_TC;
-#endif
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_TCIE;
 		i = 0;
 		j = 0;
 		return;
 	}
 	if (cr & USART_CR1_TCIE) {
-#ifdef USARTv1
-		USART2_SR = ~USART_SR_TC;
-#else
-		USART2_ICR = USART_ICR_TCCF;
-#endif
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 		return;
 	}
-	if (USART2_ISR & USART_ISR_FE || i == sizeof iobuf - 1) WWDG_CR = WWDG_CR_WDGA; // Data error
+	if (USART2_ISR & (USART_ISR_FE | USART_ISR_NF) || i == sizeof iobuf - 1) WWDG_CR = WWDG_CR_WDGA; // Data error
 	char b = USART2_RDR; // Clear RXNE
 	if (b == '\b' || b == 0x7f) { // Backspace
 		if (i) --i;

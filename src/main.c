@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 8
+#define REVISION 9
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -45,10 +45,10 @@ const Cfg cfgdata = {
 	.throt_min = THROT_MIN,     // Minimum throttle (us)
 	.throt_mid = THROT_MID,     // Middle throttle (us)
 	.throt_max = THROT_MAX,     // Maximum throttle (us)
-	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS)
-	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS]
-	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port)
-	.telem_phid = TELEM_PHID,   // S.Port physical ID [0 - off, 1..28]
+	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
+	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
+	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
+	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..3 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
 	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
@@ -64,7 +64,7 @@ __attribute__((__section__(".cfg")))
 Cfg cfg = cfgdata;
 
 int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
-char analog, telreq, flipdir, beacon, dshotext;
+char analog, telreq, telmode, flipdir, beacon, dshotext;
 volatile uint32_t tickms;
 
 static int step, sine, sync, ival;
@@ -402,7 +402,7 @@ void adc_data(int t, int v, int c, int x) {
 		if (!ready) z += c >> 1;
 		c = 0;
 	}
-	temp = smooth(&st, t > 0 ? t : 0, 10); // C
+	temp = smooth(&st, max(t, 0), 10); // C
 	volt = smooth(&sv, v * VOLT_MUL / 100, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
 	if (!analog) return;
@@ -417,35 +417,15 @@ void sys_tick_handler(void) {
 }
 
 void pend_sv_handler(void) {
-	static char d, led = -1;
+	static char led = -1;
 	static int i, n, q;
-	if (telreq && !cfg.telem_mode) { // Telemetry request
-		sendtelem();
+	if (telreq && !telmode) { // Telemetry request
+		kisstelem();
 		telreq = 0;
 	}
 	if (tick & 15) return; // 16kHz -> 1kHz
 	adc_trig();
-	if (!(tickms & 31)) { // Telemetry every 32ms
-		if (dshotext) {
-			int v = 0;
-			switch (++d) {
-				case 1:
-					v = 0x200 | (temp & 0xff);
-					break;
-				case 2:
-					v = 0x400 | ((volt / 25) & 0xff);
-					break;
-				case 3:
-					v = 0x600 | ((curr / 100) & 0xff);
-					d = 0;
-					break;
-			}
-			__disable_irq();
-			if (!dshotval) dshotval = v;
-			__enable_irq();
-		}
-		if (cfg.telem_mode == 1) sendtelem();
-	}
+	if (!(tickms & 31)) autotelem(); // Telemetry every 32ms
 	if (led != cfg.led) ledctl(led = cfg.led); // Update LEDs
 	i += curr;
 	if (++n < 1000) return; // 1ms -> 1s
@@ -462,9 +442,8 @@ static void beep(void) {
 		beacon = 0;
 	}
 	if (beepval < 0) return;
-	int i[10], n = 0, x = beepval, vol = cfg.volume;
+	int i[10], n = 0, x = beepval, vol = max(cfg.volume, 25);
 	while (i[n++] = x % 10, x /= 10);
-	if (vol < 25) vol = 25;
 	while (n--) {
 		if (x++) playmusic("_4", vol);
 		playmusic(values[i[n]], vol);
@@ -475,11 +454,12 @@ static void beep(void) {
 void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
-	brushed = cfg.brushed;
 	throt = cfg.throt_set * 20;
 #if defined ANALOG || defined ANALOG_PIN
 	analog = IO_ANALOG;
 #endif
+	brushed = cfg.brushed;
+	telmode = cfg.telem_mode;
 	init();
 	initled();
 	inittelem();
@@ -524,9 +504,9 @@ void main(void) {
 	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
 		TIM14_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
 		TIM14_ARR = 2499; // 250ms
-		TIM14_CR1 = TIM_CR1_URS;
 		TIM14_EGR = TIM_EGR_UG;
 		TIM14_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
+		TIM14_SR = ~TIM_SR_UIF;
 		throt = 1;
 		while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 250ms zero throttle
 			__WFI();

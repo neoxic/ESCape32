@@ -61,14 +61,16 @@
 #define IOTIM_IDR (GPIOB_IDR & 0x10) // B4
 #endif
 #endif
-#define IOTIM_DMA 1
-#define iodma_isr dma1_channel1_isr
+#define IOTIM_DMA 4
 
-#define USART1_TX_DMA 2
-#define USART1_RX_DMA 3
+#define USART1_RX_DMA 2
+#define USART1_TX_DMA 3
 #define usart1_dma_isr dma1_channel2_3_isr
 
-#define USART2_RX_DMA 1
+#define USART2_RX_DMA 4
+#define USART2_TX_DMA 5
 #define usart2_isr usart2_lpuart2_isr
 
 #define tim1_com_isr tim1_brk_up_trg_com_isr
+
+void iodma_isr(void);

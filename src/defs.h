@@ -128,6 +128,9 @@
 #ifndef ANALOG_MAX
 #define ANALOG_MAX 3200 // mV
 #endif
+#ifndef SERIAL_BR
+#define SERIAL_BR 460800
+#endif
 
 // Default settings
 

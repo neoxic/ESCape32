@@ -108,7 +108,7 @@ extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval;
-extern char analog, telreq, flipdir, beacon, dshotext;
+extern char analog, telreq, telmode, flipdir, beacon, dshotext;
 extern volatile uint32_t tickms;
 
 void init(void);
@@ -122,9 +122,11 @@ void io_serial(void);
 void io_analog(void);
 void adc_trig(void);
 void adc_data(int t, int v, int c, int x);
-void sendtelem(void);
+void kisstelem(void);
+void autotelem(void);
 int execcmd(char *buf);
-int clamp(int x, int a1, int a2);
+char crc8(const char *buf, int len);
+char crc8dvbs2(const char *buf, int len);
 int scale(int x, int a1, int a2, int b1, int b2);
 int smooth(int *s, int x, int n);
 int calcpid(PID *pid, int x, int y);
@@ -132,3 +134,7 @@ void checkcfg(void);
 int savecfg(void);
 int resetcfg(void);
 int playmusic(const char *str, int vol);
+
+static inline int min(int a, int b) {return a < b ? a : b;}
+static inline int max(int a, int b) {return a > b ? a : b;}
+static inline int clamp(int x, int a, int b) {return min(max(x, a), b);}

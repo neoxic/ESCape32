@@ -53,10 +53,11 @@
 #endif
 #define iodma_isr dma1_channel4_7_dma2_channel3_5_isr
 
-#define USART1_TX_DMA 2
 #define USART1_RX_DMA 3
+#define USART1_TX_DMA 2
 #define usart1_dma_isr dma1_channel2_3_dma2_channel1_2_isr
 
 #define USART2_RX_DMA 5
+#define USART2_TX_DMA 4
 
 void tim1_com_isr(void);

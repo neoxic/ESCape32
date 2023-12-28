@@ -21,12 +21,11 @@
 #define USART2_TDR USART2_DR
 #define USART2_RDR USART2_DR
 #define USART2_ISR USART2_SR
-#define USART2_ICR USART2_SR
 #define USART_ISR_RXNE USART_SR_RXNE
 #define USART_ISR_TXE USART_SR_TXE
 #define USART_ISR_TC USART_SR_TC
 #define USART_ISR_FE USART_SR_FE
-#define USART_ICR_FECF ~USART_SR_FE
+#define USART_ISR_NF USART_SR_NE
 #endif
 
 void initio(void) {
@@ -35,13 +34,13 @@ void initio(void) {
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_CR1 = TIM_CR1_CEN;
 	TIM14_SR = ~TIM_SR_UIF;
-	USART2_BRR = CLK_CNT(38400);
-	while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 50us high level on AUX
+	while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 50us high level on A15
 		if (!(GPIOA_IDR & 0x8000)) { // A15 low
 			USART2_CR3 = USART_CR3_HDSEL;
 			break;
 		}
 	}
+	USART2_BRR = CLK_CNT(38400);
 	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 #else
 	TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
@@ -62,13 +61,19 @@ void initio(void) {
 int recvbuf(char *buf, int len) {
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_SR = ~TIM_SR_UIF;
-	USART2_ICR = USART_ICR_FECF;
 	for (int i = 0; i < len; ++i) {
 		while (!(USART2_ISR & USART_ISR_RXNE)) {
 			if (TIM14_SR & TIM_SR_UIF) return 0; // Timeout
 		}
+		if (USART2_ISR & (USART_ISR_FE | USART_ISR_NF)) { // Data error
+#ifdef USARTv1
+			USART2_DR; // Clear flags
+#else
+			USART2_ICR = USART_ICR_FECF | USART_ICR_NCF;
+#endif
+			return 0;
+		}
 		buf[i] = USART2_RDR; // Clear RXNE
-		if (USART2_ISR & USART_ISR_FE) return 0; // Data error
 		TIM14_EGR = TIM_EGR_UG;
 	}
 	return 1;
