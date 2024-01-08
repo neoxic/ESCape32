@@ -174,7 +174,7 @@
 #define DUTY_RATE 25
 #endif
 #ifndef DUTY_DRAG
-#define DUTY_DRAG 75
+#define DUTY_DRAG 0
 #endif
 #ifndef THROT_MODE
 #define THROT_MODE 0

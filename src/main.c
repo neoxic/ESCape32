@@ -89,7 +89,7 @@ static void resync(void) {
 	sync = 0;
 	accl = 0;
 	ival = 10000;
-	ertm = 60000000;
+	ertm = 100000000;
 }
 #endif
 
@@ -142,7 +142,8 @@ static void nextstep(void) {
 		TIM1_CCMR2 = m2;
 		TIM1_CCER = er;
 		step = 1;
-		sync = 6;
+		sync = 1;
+		ertm = 60000000;
 		return;
 	}
 	if (sine) { // Sine startup
@@ -182,6 +183,7 @@ static void nextstep(void) {
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		TIM_DIER(IFTIM) = 0;
 		compctl(0);
+		sync = 0;
 		prep = 1;
 		return;
 	}
@@ -547,8 +549,11 @@ void main(void) {
 				running = 1;
 			}
 		} else { // Neutral
-			curduty = cfg.duty_drag * 20;
-			running = 0;
+			if (sync == 6) curduty = 0; // Coasting
+			else { // Drag brake
+				curduty = cfg.duty_drag * 20;
+				running = 0;
+			}
 			if (braking == 1) braking = 2; // Reverse after braking
 		}
 #ifndef SENSORED
@@ -568,8 +573,8 @@ void main(void) {
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			step = b + 1; // Switch over to 6-step
 			sine = 0;
-			prep = 0;
 			sync = 0;
+			prep = 0;
 			accl = 0;
 			ival = 10000;
 			nextstep();
@@ -582,7 +587,7 @@ void main(void) {
 				erpm = 60000000 / ertm;
 				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max); // Variable PWM frequency
 			}
-			int maxduty = sync < 6 ? cfg.duty_spup * 20 : scale(erpm, 0, cfg.duty_ramp * 1000, 500, 2000);
+			int maxduty = scale(erpm, 0, cfg.duty_ramp * 1000, cfg.duty_spup * 20, 2000);
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (newduty > maxduty) newduty = maxduty;
 			int a = accl ? 0 : cfg.duty_rate;
@@ -602,7 +607,7 @@ void main(void) {
 		if (running && !step) { // Start motor
 			__disable_irq();
 			ival = 10000;
-			ertm = 60000000;
+			ertm = 100000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 			TIM1_DIER |= TIM_DIER_COMIE;
@@ -625,8 +630,8 @@ void main(void) {
 			laststep();
 			step = 0;
 			sine = 0;
-			prep = 0;
 			sync = 0;
+			prep = 0;
 			accl = 0;
 			ertm = 0;
 			erpm = 0;

@@ -649,7 +649,7 @@ static void sbustx(void) {
 			b = a >> 8 | 0x80;
 			break;
 		case 1: // SBS-01R (RPM)
-			a = min(erpm / (6 * cfg.telem_poles >> 1), 0xffff);
+			a = min(erpm / (cfg.telem_poles * 3), 0xffff);
 			b = a >> 8;
 			break;
 		case 2: // SBS-01C (current)
