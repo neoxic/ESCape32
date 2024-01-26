@@ -74,24 +74,21 @@ static void entryirq(void) {
 		ioirq = cliirq;
 #ifdef IO_PA2
 		io_serial();
-		int r1 = GPIOA_ODR;
-		int r2 = GPIOA_PUPDR;
-		int r3 = GPIOA_MODER;
-		GPIOA_ODR = r1 & ~0x8000; // In case A15 is output
-		GPIOA_PUPDR = r2 | 0x80000000; // A15 (pull-down)
-		GPIOA_MODER = (r3 | 0xc0000000) & ~0x40000000; // A15 (USART2_RX)
+#ifdef IO_AUX
+		GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
+		GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 		TIM15_ARR = CLK_CNT(20000) - 1;
 		TIM15_EGR = TIM_EGR_UG;
 		TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 		while (TIM15_CR1 & TIM_CR1_CEN) { // Wait for 50us high level on A15
 			if (!(GPIOA_IDR & 0x8000)) { // A15 low
-				GPIOA_ODR = r1;
-				GPIOA_PUPDR = r2;
-				GPIOA_MODER = r3;
 				USART2_CR3 = USART_CR3_HDSEL;
 				break;
 			}
 		}
+#else
+		USART2_CR3 = USART_CR3_HDSEL;
+#endif
 		USART2_BRR = CLK_CNT(38400);
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 #else

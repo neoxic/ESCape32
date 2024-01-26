@@ -30,6 +30,9 @@
 
 void initio(void) {
 #ifdef IO_PA2
+#ifdef IO_AUX
+	GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
+	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 	TIM14_ARR = CLK_CNT(20000) - 1;
 	TIM14_EGR = TIM_EGR_UG;
 	TIM14_CR1 = TIM_CR1_CEN;
@@ -40,6 +43,9 @@ void initio(void) {
 			break;
 		}
 	}
+#else
+	USART2_CR3 = USART_CR3_HDSEL;
+#endif
 	USART2_BRR = CLK_CNT(38400);
 	USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 #else
