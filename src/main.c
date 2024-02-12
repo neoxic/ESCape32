@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 9
+#define REVISION 10
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -73,12 +73,12 @@ static char prep, accl, tick, reverse, ready, brushed;
 static void reset(void) {
 	__disable_irq();
 	TIM1_EGR = TIM_EGR_BG;
-	TIM14_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
-	TIM14_ARR = 9999;
-	TIM14_EGR = TIM_EGR_UG;
-	TIM14_CR1 = TIM_CR1_CEN;
-	TIM14_SR = ~TIM_SR_UIF;
-	while (!(TIM14_SR & TIM_SR_UIF)); // Wait for 1s
+	TIM_PSC(GPTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
+	TIM_ARR(GPTIM) = 9999;
+	TIM_EGR(GPTIM) = TIM_EGR_UG;
+	TIM_SR(GPTIM) = ~TIM_SR_UIF;
+	TIM_CR1(GPTIM) = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM_CR1(GPTIM) & TIM_CR1_CEN); // Wait for 1s
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
 }
@@ -88,7 +88,7 @@ static void resync(void) {
 	TIM_DIER(IFTIM) = 0;
 	sync = 0;
 	accl = 0;
-	ival = 10000;
+	ival = 10000 << IFTIM_XRES;
 	ertm = 100000000;
 }
 #endif
@@ -147,8 +147,7 @@ static void nextstep(void) {
 		return;
 	}
 	if (sine) { // Sine startup
-		IFTIM_OCR = sine;
-		TIM_ARR(IFTIM) = sine;
+		TIM_ARR(IFTIM) = IFTIM_OCR = sine;
 		TIM_EGR(IFTIM) = TIM_EGR_UG;
 		if (!prep && step) step = step * 60 - 59; // Switch over from 6-step
 		if (reverse) {
@@ -204,12 +203,16 @@ static void nextstep(void) {
 	int m = x >> 3; // Energized phase mask
 	int p = x & m; // Positive phase
 	int n = ~x & m; // Negative phase
-	int z = (step & 1) ^ reverse; // BEMF rising
 	int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+#ifdef STM32G4
+	int m2 = TIM_CCMR2_OC3PE;
+	int er = TIM_CCER_CC5E;
+#else
 	int m2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_PWM1;
 	int er = TIM_CCER_CC4E;
+#endif
 #ifndef SENSORED
-	int cc = z ? 4 : 0;
+	int cc = (step & 1) ^ reverse ? 4 : 0; // BEMF rising/falling
 #endif
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
@@ -226,14 +229,12 @@ static void nextstep(void) {
 #endif
 		er |= TIM_CCER_CC1NE;
 	} else {
-		if (!z) {
 #ifdef PWM_ENABLE
-			m1 |= TIM_CCMR1_OC1M_FORCE_HIGH;
+		m1 |= TIM_CCMR1_OC1M_FORCE_HIGH;
 #else
-			m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
+		m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
 #endif
-			er |= TIM_CCER_CC1NE;
-		}
+		er |= TIM_CCER_CC1NE;
 #ifndef SENSORED
 		cc |= 1;
 #endif
@@ -253,14 +254,12 @@ static void nextstep(void) {
 #endif
 		er |= TIM_CCER_CC2NE;
 	} else {
-		if (!z) {
 #ifdef PWM_ENABLE
-			m1 |= TIM_CCMR1_OC2M_FORCE_HIGH;
+		m1 |= TIM_CCMR1_OC2M_FORCE_HIGH;
 #else
-			m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
+		m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
 #endif
-			er |= TIM_CCER_CC2NE;
-		}
+		er |= TIM_CCER_CC2NE;
 #ifndef SENSORED
 		cc |= 2;
 #endif
@@ -280,14 +279,12 @@ static void nextstep(void) {
 #endif
 		er |= TIM_CCER_CC3NE;
 	} else {
-		if (!z) {
 #ifdef PWM_ENABLE
-			m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
+		m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
 #else
-			m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+		m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
 #endif
-			er |= TIM_CCER_CC3NE;
-		}
+		er |= TIM_CCER_CC3NE;
 #ifndef SENSORED
 		cc |= 3;
 #endif
@@ -302,13 +299,13 @@ static void nextstep(void) {
 	TIM1_CCMR2 = m2;
 	TIM1_CCER = er;
 	buf[step - 1] = ival;
-	if (sync == 6) ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> 1; // Electrical revolution time (us)
+	if (sync == 6) ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
 #ifndef SENSORED
 	static int pcc, val, cnt;
 	compctl(pcc);
 	pcc = cc;
-	if (ival > 1000) {
-		val = 1000;
+	if (ival > 1000 << IFTIM_XRES) {
+		val = 1000 << IFTIM_XRES;
 		cnt = 0;
 	} else if (++cnt == 6) {
 		if ((val > ival ? val - ival : ival - val) > ival >> 1) { // Probably desync
@@ -318,18 +315,49 @@ static void nextstep(void) {
 		val = ival;
 		cnt = 0;
 	}
-	if (ertm < 1000) { // 60K+ ERPM
+	if (ertm < 100) { // 600K+ ERPM
+#ifdef STM32G4
+		TIM1_CCR5 = 0;
+#else
 		TIM1_CCR4 = 0;
+#endif
+		IFTIM_ICMR = IFTIM_ICM3;
+		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+	} else if (ertm < 200) { // 300K+ ERPM
+#ifdef STM32G4
+		TIM1_CCR5 = 0;
+#else
+		TIM1_CCR4 = 0;
+#endif
+		IFTIM_ICMR = IFTIM_ICM2;
+		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+	} else if (ertm < 1000) { // 60K+ ERPM
+#ifdef STM32G4
+		TIM1_CCR5 = 0;
+#else
+		TIM1_CCR4 = 0;
+#endif
+		IFTIM_ICMR = IFTIM_ICM1;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 	} else if (ertm < 2000) { // 30K+ ERPM
+#ifdef STM32G4
+		TIM1_CCR5 = 0;
+#else
 		TIM1_CCR4 = 0;
+#endif
+		IFTIM_ICMR = IFTIM_ICM1;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS | TIM_CR1_CKD_CK_INT_MUL_2;
 	} else { // Minimum PWM frequency
-		TIM1_CCR4 = IFTIM_ICF << 2;
+#ifdef STM32G4
+		TIM1_CCR5 = IFTIM_ICFL << 2;
+#else
+		TIM1_CCR4 = IFTIM_ICFL << 2;
+#endif
+		IFTIM_ICMR = IFTIM_ICM1;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS | TIM_CR1_CKD_CK_INT_MUL_4;
 	}
 	TIM_SR(IFTIM) = 0; // Clear BEMF events before enabling interrupts
-	TIM_DIER(IFTIM) = TIM_DIER_UIE | IFTIM_ICE;
+	TIM_DIER(IFTIM) = TIM_DIER_UIE | IFTIM_ICIE;
 #endif
 }
 
@@ -349,7 +377,7 @@ static void laststep(void) {
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
-	TIM1_EGR = TIM_EGR_COMG;
+	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM2;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2;
@@ -357,7 +385,7 @@ static void laststep(void) {
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
 #endif
-	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
+	TIM1_EGR = TIM_EGR_COMG;
 #ifndef SENSORED
 	compctl(0);
 #endif
@@ -365,6 +393,22 @@ static void laststep(void) {
 
 void tim1_com_isr(void) {
 	if (!(TIM1_DIER & TIM_DIER_COMIE)) return;
+#if !defined STM32G4 && !defined AT32F4
+	int m1 = TIM1_CCMR1;
+	int m2 = TIM1_CCMR2;
+#ifdef PWM_ENABLE
+	if ((m1 & TIM_CCMR1_OC1M_MASK) == TIM_CCMR1_OC1M_FORCE_HIGH) m1 &= ~TIM_CCMR1_OC1M_MASK;
+	if ((m1 & TIM_CCMR1_OC2M_MASK) == TIM_CCMR1_OC2M_FORCE_HIGH) m1 &= ~TIM_CCMR1_OC2M_MASK;
+	if ((m2 & TIM_CCMR2_OC3M_MASK) == TIM_CCMR2_OC3M_FORCE_HIGH) m2 &= ~TIM_CCMR2_OC3M_MASK;
+#else
+	if ((m1 & TIM_CCMR1_OC1M_MASK) == TIM_CCMR1_OC1M_FORCE_LOW) m1 &= ~TIM_CCMR1_OC1M_MASK;
+	if ((m1 & TIM_CCMR1_OC2M_MASK) == TIM_CCMR1_OC2M_FORCE_LOW) m1 &= ~TIM_CCMR1_OC2M_MASK;
+	if ((m2 & TIM_CCMR2_OC3M_MASK) == TIM_CCMR2_OC3M_FORCE_LOW) m2 &= ~TIM_CCMR2_OC3M_MASK;
+#endif
+	TIM1_CCMR1 = m1;
+	TIM1_CCMR2 = m2;
+	TIM1_EGR = TIM_EGR_COMG;
+#endif
 	TIM1_SR = ~TIM_SR_COMIF;
 	nextstep();
 }
@@ -384,7 +428,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 		resync();
 		return;
 	}
-	if (!(er & IFTIM_ICE)) return;
+	if (!(er & IFTIM_ICIE)) return;
 	int t = IFTIM_ICR; // Time since last zero-crossing
 	if (t < ival >> 1) return;
 	int u = ival * 3;
@@ -397,7 +441,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 }
 #endif
 
-void adc_data(int t, int v, int c, int x) {
+void adcdata(int t, int v, int c, int x) {
 	static int z = 3300, st = -1, sv = -1, sc = -1, sx = -1;
 	if ((c -= z) >= 0) ready = 1;
 	else {
@@ -426,7 +470,7 @@ void pend_sv_handler(void) {
 		telreq = 0;
 	}
 	if (tick & 15) return; // 16kHz -> 1kHz
-	adc_trig();
+	adctrig();
 	if (!(tickms & 31)) autotelem(); // Telemetry every 32ms
 	if (led != cfg.led) ledctl(led = cfg.led); // Update LEDs
 	i += curr;
@@ -463,6 +507,7 @@ void main(void) {
 	brushed = cfg.brushed;
 	telmode = cfg.telem_mode;
 	init();
+	initbec();
 	initled();
 	inittelem();
 #ifndef ANALOG
@@ -476,7 +521,7 @@ void main(void) {
 #else
 	TIM1_CR2 = TIM_CR2_CCPC | TIM_CR2_CCUS | TIM_CR2_MMS_COMPARE_PULSE; // TRGO=OC1
 #endif
-	TIM_PSC(IFTIM) = CLK_MHZ / 2 - 1; // 0.5us resolution
+	TIM_PSC(IFTIM) = (CLK_MHZ >> (IFTIM_XRES + 1)) - 1; // 125/250/500ns resolution
 	TIM_ARR(IFTIM) = 0;
 	TIM_CR1(IFTIM) = TIM_CR1_URS;
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
@@ -504,20 +549,21 @@ void main(void) {
 		if (cfg.prot_volt) for (int i = 0; i < cells; ++i) playmusic("_2D", cfg.volume); // Number of battery cells
 	}
 	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
-		TIM14_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
-		TIM14_ARR = 2499; // 250ms
-		TIM14_EGR = TIM_EGR_UG;
-		TIM14_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
-		TIM14_SR = ~TIM_SR_UIF;
+		TIM_PSC(GPTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
+		TIM_ARR(GPTIM) = 2499; // 250ms
+		TIM_CR1(GPTIM) = TIM_CR1_URS;
+		TIM_EGR(GPTIM) = TIM_EGR_UG;
+		TIM_CR1(GPTIM) = TIM_CR1_CEN | TIM_CR1_URS;
+		TIM_SR(GPTIM) = ~TIM_SR_UIF;
 		throt = 1;
-		while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 250ms zero throttle
+		while (!(TIM_SR(GPTIM) & TIM_SR_UIF)) { // Wait for 250ms zero throttle
 			__WFI();
 			beep();
 			if (!throt) continue;
-			TIM14_EGR = TIM_EGR_UG;
+			TIM_EGR(GPTIM) = TIM_EGR_UG;
 		}
 		throt = 0;
-		TIM14_CR1 = 0;
+		TIM_CR1(GPTIM) = 0;
 		playmusic("GC", cfg.volume);
 	}
 #endif
@@ -533,7 +579,7 @@ void main(void) {
 		if (!running) curduty = 0;
 		if (input > 0) { // Forward
 			if (range + margin < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(input, 0, range, 1000, 145);
+			else sine = scale(input, 0, range, 1000 << IFTIM_XRES, 145 << IFTIM_XRES);
 			reverse = cfg.revdir ^ flipdir;
 			running = 1;
 			braking = 0;
@@ -544,13 +590,12 @@ void main(void) {
 				braking = 1;
 			} else {
 				if (range + margin < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-				else sine = scale(-input, 0, range, 1000, 145);
+				else sine = scale(-input, 0, range, 1000 << IFTIM_XRES, 145 << IFTIM_XRES);
 				reverse = !cfg.revdir ^ flipdir;
 				running = 1;
 			}
 		} else { // Neutral
-			if (sync == 6) curduty = 0; // Coasting
-			else { // Drag brake
+			if (sync < 6) { // Drag brake
 				curduty = cfg.duty_drag * 20;
 				running = 0;
 			}
@@ -560,7 +605,7 @@ void main(void) {
 		if (running && sine) { // Sine startup
 			if (!newduty) {
 				if (!ertm) goto skip_duty;
-				ertm = sine * 180;
+				ertm = sine * (180 >> IFTIM_XRES);
 				erpm = 60000000 / ertm;
 				goto skip_duty;
 			}
@@ -569,14 +614,14 @@ void main(void) {
 			int b = a / 60;
 			int c = b * 60;
 			IFTIM_OCR = sine * (reverse ? c - a + 60 : a - c + 1); // Commutation delay
-			TIM_ARR(IFTIM) = 0xffff;
+			TIM_ARR(IFTIM) = (1 << (IFTIM_XRES + 16)) - 1;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			step = b + 1; // Switch over to 6-step
 			sine = 0;
 			sync = 0;
 			prep = 0;
 			accl = 0;
-			ival = 10000;
+			ival = 10000 << IFTIM_XRES;
 			nextstep();
 			__enable_irq();
 		}
@@ -606,7 +651,7 @@ void main(void) {
 	skip_duty:
 		if (running && !step) { // Start motor
 			__disable_irq();
-			ival = 10000;
+			ival = 10000 << IFTIM_XRES;
 			ertm = 100000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
@@ -616,17 +661,16 @@ void main(void) {
 			TIM_DIER(IFTIM) = TIM_DIER_CC1IE;
 			TIM_ARR(IFTIM) = -1;
 #else
-			IFTIM_OCR = 0xffff;
-			TIM_ARR(IFTIM) = 0xffff;
+			TIM_ARR(IFTIM) = IFTIM_OCR = (1 << (IFTIM_XRES + 16)) - 1;
 #endif
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			__enable_irq();
 		} else if (!running && step) { // Stop motor
 			__disable_irq();
 			TIM1_DIER &= ~TIM_DIER_COMIE;
+			TIM_DIER(IFTIM) = 0;
 			TIM_ARR(IFTIM) = 0;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
-			TIM_DIER(IFTIM) = 0;
 			laststep();
 			step = 0;
 			sine = 0;

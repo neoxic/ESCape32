@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,18 +17,19 @@
 
 #pragma once
 
-#if SENS_MAP == 0xA3 // A3 (volt)
-#define SENS_CNT 1
-#define SENS_CHAN 0x3
-#endif
-
 #define CLK 72000000
 #define IO_PA2
 #define IO_TYPE 0
+#define GPTIM TIM6
 
 #define IFTIM TIM3
-#define IFTIM_ICF 64
-#define IFTIM_ICE TIM_DIER_CC1IE
+#define IFTIM_XRES 0
+#define IFTIM_ICFL 64
+#define IFTIM_ICMR TIM3_CCMR1
+#define IFTIM_ICM1 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8)
+#define IFTIM_ICM2 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_4_N_8)
+#define IFTIM_ICM3 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_2_N_8)
+#define IFTIM_ICIE TIM_DIER_CC1IE
 #define IFTIM_ICR TIM3_CCR1
 #define IFTIM_OCR TIM3_CCR3
 #define iftim_isr tim3_isr
@@ -41,7 +42,7 @@
 
 #define USART1_RX_DMA 3
 #define USART1_TX_DMA 2
-#define usart1_dma_isr dma1_channel2_3_dma2_channel1_2_isr
+#define usart1_tx_dma_isr dma1_channel2_3_dma2_channel1_2_isr
 
 #define USART2_RX_DMA 5
 #define USART2_TX_DMA 4

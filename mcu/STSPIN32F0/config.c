@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -27,15 +27,14 @@ void init(void) {
 	RCC_APB2RSTR = 0;
 	RCC_APB1RSTR = 0;
 	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN | RCC_AHBENR_GPIOFEN;
-	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN;
-	RCC_APB1ENR = RCC_APB1ENR_TIM2EN | RCC_APB1ENR_TIM14EN | RCC_APB1ENR_WWDGEN;
+	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN | RCC_APB2ENR_TIM16EN;
+	RCC_APB1ENR = RCC_APB1ENR_TIM2EN | RCC_APB1ENR_WWDGEN;
 	SYSCFG_CFGR1 = SYSCFG_CFGR1_MEM_MODE_SRAM; // Map SRAM at 0x00000000
 	memcpy(_vec, _rom, _ram - _vec); // Copy vector table to SRAM
 
 	// Default GPIO state - analog input
 	GPIOA_AFRL = 0x00000222; // A0 (TIM2_CH1), A1 (TIM2_CH2), A2 (TIM2_CH3)
 	GPIOA_AFRH = 0x00000222; // A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
-	GPIOB_AFRL = 0x00000000;
 	GPIOB_AFRH = 0x22200000; // B13 (TIM1_CH1N), B14 (TIM1_CH2N), B15 (TIM1_CH3N)
 	GPIOF_ODR = 0x00c0; // F7,F6=11 (maximum over-current threshold)
 	GPIOA_PUPDR = 0x24000015; // A0,A1,A2 (pull-up)
@@ -53,7 +52,7 @@ void init(void) {
 	nvic_set_priority(NVIC_TIM3_IRQ, 0x40);
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
-	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1
+	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1_TX
 	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM3
 
 	nvic_enable_irq(NVIC_TIM1_BRK_UP_TRG_COM_IRQ);
@@ -70,7 +69,7 @@ void init(void) {
 	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
 	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
 	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = 0x30000; // CH16 (temp), CH17 (vref)
+	ADC1_CHSELR = 0x30000; // CH17 (vref), CH16 (temp)
 	len = 2;
 	if (IO_ANALOG) {
 		ADC1_CHSELR |= 1 << AIN_PIN;
@@ -91,7 +90,7 @@ void io_analog(void) {
 	GPIOA_MODER |= 0x3000; // A6 (analog)
 }
 
-void adc_trig(void) {
+void adctrig(void) {
 	if (DMA1_CCR(1) & DMA_CCR_EN) return;
 	DMA1_CNDTR(1) = len;
 	DMA1_CCR(1) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
@@ -105,5 +104,5 @@ void dma1_channel1_isr(void) {
 	int x = ain ? buf[i++] : 0;
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
 	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 80 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 30;
-	adc_data(t, 0, 0, x * r >> 12);
+	adcdata(t, 0, 0, x * r >> 12);
 }

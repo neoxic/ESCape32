@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,9 +17,61 @@
 
 #include "common.h"
 
+#if LED_MAP == 0xB8
+#define LED1_PORT B
+#define LED1_PIN 8
+#elif LED_MAP == 0xAFB3B4
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT B
+#define LED3_PIN 4
+#elif LED_MAP == 0xAFB5B3
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP == 0xB5B3AF
+#define LED1_PORT B
+#define LED1_PIN 5
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT A
+#define LED3_PIN 15
+#elif LED_MAP == 0xB5B4B3
+#define LED1_PORT B
+#define LED1_PIN 5
+#define LED2_PORT B
+#define LED2_PIN 4
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP == 0xB8B5B3
+#define LED1_PORT B
+#define LED1_PIN 8
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP != 0
+#error Invalid LED_MAP
+#endif
+
+#ifdef LED_INV
+#define LED1_INV
+#define LED2_INV
+#define LED3_INV
+#endif
+
 #define GPIO(port, name) _GPIO(port, name)
 #define _GPIO(port, name) __GPIO(port, name)
 #define __GPIO(port, name) GPIO##port##_##name
+
+#ifdef STM32G4
+#define FLASH_CR_STRT FLASH_CR_START
+#endif
 
 __attribute__((__weak__))
 void initled(void) {

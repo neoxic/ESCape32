@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -19,8 +19,3 @@
 
 #define CLK 48000000
 #define PAGE_SIZE 1024
-#ifdef IO_PA6
-#define TIM3_IDR (GPIOA_IDR & 0x40) // A6
-#else
-#define TIM3_IDR (GPIOB_IDR & 0x10) // B4
-#endif

@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -18,6 +18,15 @@
 #include <libopencm3/stm32/adc.h>
 #include "common.h"
 
+#if SENS_MAP == 0xA3 // A3 (volt)
+#define SENS_CHAN 0x8
+#elif SENS_MAP == 0xA6 // A6 (volt)
+#define SENS_CHAN 0x40
+#elif SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
+#define SENS_CHAN 0x48
+#define SENS_SWAP
+#endif
+
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
 static char len, ain;
@@ -30,7 +39,7 @@ void init(void) {
 	RCC_APB1RSTR = 0;
 	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
 	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN;
-	RCC_APB1ENR = RCC_APB1ENR_TIM2EN | RCC_APB1ENR_TIM14EN | RCC_APB1ENR_WWDGEN;
+	RCC_APB1ENR = RCC_APB1ENR_TIM2EN | RCC_APB1ENR_TIM6EN | RCC_APB1ENR_WWDGEN;
 	SYSCFG_CFGR1 = SYSCFG_CFGR1_MEM_MODE_SRAM; // Map SRAM at 0x00000000
 	memcpy(_vec, _rom, _ram - _vec); // Copy vector table to SRAM
 
@@ -38,8 +47,6 @@ void init(void) {
 	GPIOA_AFRL = 0x20000000; // A7 (TIM1_CH1N)
 	GPIOA_AFRH = 0x00000222; // A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_AFRL = 0x00000022; // B0 (TIM1_CH2N), B1 (TIM1_CH3N)
-	GPIOB_AFRH = 0x00000000;
-	GPIOA_PUPDR = 0x24000000;
 	GPIOB_PUPDR = 0x00001000; // B6 (pull-up)
 	GPIOA_MODER = 0xebeabfff; // A7 (TIM1_CH1N), A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_MODER = 0xffffeffa; // B0 (TIM1_CH2N), B1 (TIM1_CH3N), B6 (USART1_TX)
@@ -61,8 +68,8 @@ void init(void) {
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
 	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
-	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1
-	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM3 or TIM15 or USART2
+	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1_TX
+	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM3 or TIM15 or USART2_RX
 
 	nvic_enable_irq(NVIC_TIM1_BRK_UP_TRG_COM_IRQ);
 	nvic_enable_irq(NVIC_TIM1_CC_IRQ);
@@ -81,7 +88,7 @@ void init(void) {
 	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
 	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
 	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH16 (temp), CH17 (vref)
+	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH17 (vref), CH16 (temp)
 	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
 		ADC1_CHSELR |= 1 << AIN_PIN;
@@ -95,7 +102,7 @@ void init(void) {
 	TIM1_SMCR = TIM_SMCR_TS_ITR1; // TRGI=TIM2
 	TIM2_CR2 = TIM_CR2_MMS_COMPARE_OC1REF; // TRGO=OC1REF
 	TIM2_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2; // Inverted PWM on OC1
-	TIM2_CCMR2 = TIM_CCMR2_CC4S_IN_TI4 | TIM_CCMR2_IC4F_DTF_DIV_8_N_8;
+	TIM2_CCMR2 = TIM_CCMR2_CC4S_IN_TI4;
 	TIM2_CCER = TIM_CCER_CC4E; // IC4 on rising edge on TI4 (COMP1_OUT)
 }
 
@@ -133,7 +140,7 @@ void io_analog(void) {
 	GPIOA_MODER |= 0x30; // A2 (analog)
 }
 
-void adc_trig(void) {
+void adctrig(void) {
 	if (DMA1_CCR(1) & DMA_CCR_EN) return;
 	DMA1_CNDTR(1) = len;
 	DMA1_CCR(1) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
@@ -177,5 +184,5 @@ void dma1_channel1_isr(void) {
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
 	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 80 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 30;
-	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
+	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

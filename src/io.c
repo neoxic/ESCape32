@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#ifdef USARTv1
+#ifdef AT32F4
 #define USART2_TDR USART2_DR
 #define USART2_RDR USART2_DR
 #define USART2_ISR USART2_SR
@@ -79,6 +79,7 @@ static void entryirq(void) {
 		GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 		TIM15_ARR = CLK_CNT(20000) - 1;
 		TIM15_EGR = TIM_EGR_UG;
+		TIM15_SR = ~TIM_SR_UIF;
 		TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 		while (TIM15_CR1 & TIM_CR1_CEN) { // Wait for 50us high level on A15
 			if (!(GPIOA_IDR & 0x8000)) { // A15 low
@@ -106,13 +107,15 @@ static void entryirq(void) {
 #endif
 		return;
 	}
+	int t = TIM_CCR1(IOTIM); // Time between two rising edges
 	if (IO_ANALOG) {
 	analog:
+#ifndef ANALOG_PIN
 		io_analog();
 		analog = 1;
+#endif
 		return;
 	}
-	int t = TIM_CCR1(IOTIM); // Time between two rising edges
 	if (!n++) return; // First capture is always invalid
 	IWDG_KR = IWDG_KR_START;
 #ifdef IO_PA2
@@ -136,7 +139,7 @@ static void entryirq(void) {
 				USART2_BRR = CLK_CNT(100000);
 				USART2_CR1 = USART_CR1_PCE | USART_CR1_M0;
 				USART2_CR2 = USART_CR2_STOPBITS_2;
-#ifndef USARTv1
+#ifndef AT32F4
 				USART2_CR2 |= USART_CR2_RXINV | USART_CR2_TXINV;
 				GPIOA_PUPDR = (GPIOA_PUPDR & ~0x30) | 0x20; // A2 (pull-down)
 #endif
@@ -155,7 +158,7 @@ static void entryirq(void) {
 		DMA1_CPAR(USART2_RX_DMA) = (uint32_t)&USART2_RDR;
 		DMA1_CMAR(USART2_RX_DMA) = (uint32_t)iobuf;
 		DMA1_CPAR(USART2_TX_DMA) = (uint32_t)&USART2_TDR;
-		DMA1_CMAR(USART2_TX_DMA) = (uint32_t)&iobuf;
+		DMA1_CMAR(USART2_TX_DMA) = (uint32_t)iobuf;
 		return;
 	}
 #endif
@@ -266,7 +269,7 @@ static void dshotdma(void) {
 	static const char gcr[] = {0x19, 0x1b, 0x12, 0x13, 0x1d, 0x15, 0x16, 0x17, 0x1a, 0x09, 0x0a, 0x0b, 0x1e, 0x0d, 0x0e, 0x0f};
 	static int cmd, cnt, rep;
 	if (DMA1_CCR(IOTIM_DMA) & DMA_CCR_DIR) {
-#ifdef AT32F421 // Errata 1.5.1
+#ifdef AT32F4 // Errata 1.5.1
 		RCC_APB2RSTR = RCC_APB2RSTR_TIM15RST;
 		RCC_APB2RSTR = 0;
 		TIM15_BDTR = TIM_BDTR_MOE;
@@ -489,7 +492,7 @@ void usart2_isr(void) {
 }
 
 static void resync(void) {
-#ifdef USARTv1
+#ifdef AT32F4
 	USART2_SR, USART2_DR; // Clear flags
 #else
 	USART2_ICR = USART_ICR_IDLECF;
@@ -504,7 +507,7 @@ static void serialirq(void) {
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 		return;
 	}
-#ifdef USARTv1
+#ifdef AT32F4
 	USART2_SR, USART2_DR; // Clear flags
 #else
 	USART2_RQR = USART_RQR_RXFRQ; // Clear RXNE
@@ -572,7 +575,7 @@ static void serialdma(void) {
 	IWDG_KR = IWDG_KR_RESET;
 	int len = serialreq(iobuf[0], iobuf[1] | iobuf[2] << 8);
 	if (!len) return;
-#ifdef USARTv1
+#ifdef AT32F4
 	USART2_SR = ~USART_SR_TC;
 #else
 	USART2_ICR = USART_ICR_TCCF;
@@ -704,7 +707,7 @@ static void sbusdma(void) {
 }
 
 static void crsfirq(void) {
-#ifdef USARTv1
+#ifdef AT32F4
 	USART2_SR, USART2_DR; // Clear flags
 #else
 	USART2_RQR = USART_RQR_RXFRQ; // Clear RXNE

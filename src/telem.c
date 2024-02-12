@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#ifdef USARTv1
+#ifdef AT32F4
 #define USART1_TDR USART1_DR
 #define USART1_RDR USART1_DR
 #endif
@@ -38,7 +38,7 @@ void inittelem(void) {
 		case 3: // S.Port
 			iofunc = sportfunc;
 			USART1_BRR = CLK_CNT(57600);
-#ifndef USARTv1
+#ifndef AT32F4
 			USART1_CR2 = USART_CR2_RXINV | USART_CR2_TXINV;
 			GPIOB_PUPDR = (GPIOB_PUPDR & ~0x3000) | 0x2000; // B6 (pull-down)
 #endif
@@ -63,7 +63,7 @@ void inittelem(void) {
 void usart1_isr(void) {
 	int cr = USART1_CR1;
 	if (cr & USART_CR1_TCIE) goto reading;
-#ifdef USARTv1
+#ifdef AT32F4
 	USART1_SR, USART1_DR; // Clear flags
 #else
 	USART1_RQR = USART_RQR_RXFRQ; // Clear RXNE
@@ -75,7 +75,7 @@ void usart1_isr(void) {
 	}
 	int len = iofunc(sizeof iobuf - DMA1_CNDTR(USART1_RX_DMA));
 	if (len) {
-#ifdef USARTv1
+#ifdef AT32F4
 		USART1_SR = ~USART_SR_TC;
 #else
 		USART1_ICR = USART_ICR_TCCF;
@@ -93,7 +93,7 @@ reading:
 	DMA1_CCR(USART1_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
-void usart1_dma_isr(void) {
+void usart1_tx_dma_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(USART1_TX_DMA);
 	DMA1_CCR(USART1_TX_DMA) = 0;
 }

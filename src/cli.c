@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -51,7 +51,8 @@
 	XX(30, str, music) \
 	XX(31, val, volume) \
 	XX(32, val, beacon) \
-	XX(33, val, led) \
+	XX(33, val, bec) \
+	XX(34, val, led) \
 
 static int beep = -1;
 

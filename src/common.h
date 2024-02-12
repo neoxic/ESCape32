@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
-#ifdef USARTv1
+#ifdef AT32F4
 #include <libopencm3/cm3/common.h>
 #include <libopencm3/stm32/f1/usart.h>
 #else
@@ -32,10 +32,15 @@
 #endif
 #include <libopencm3/stm32/dma.h>
 #include <libopencm3/stm32/flash.h>
+#ifdef STM32G4 // https://github.com/libopencm3/libopencm3/pull/1526
+#define LIBOPENCM3_IWDG_H
+#include <libopencm3/stm32/common/iwdg_common_v2.h>
+#else
 #include <libopencm3/stm32/iwdg.h>
+#endif
 #include <libopencm3/stm32/wwdg.h>
-#include "defs.h"
 #include "config.h"
+#include "defs.h"
 
 #define CLK_CNT(rate) ((CLK + ((rate) >> 1)) / (rate))
 #define CLK_KHZ (CLK / 1000)
@@ -96,6 +101,7 @@ typedef struct {
 	char music[256];
 	char volume;
 	char beacon;
+	char bec;
 	char led;
 } Cfg;
 
@@ -113,6 +119,7 @@ extern volatile uint32_t tickms;
 
 void init(void);
 void initio(void);
+void initbec(void);
 void initled(void);
 void inittelem(void);
 void ledctl(int x);
@@ -120,8 +127,8 @@ void hsictl(int x);
 void compctl(int x);
 void io_serial(void);
 void io_analog(void);
-void adc_trig(void);
-void adc_data(int t, int v, int c, int x);
+void adctrig(void);
+void adcdata(int t, int v, int c, int x);
 void kisstelem(void);
 void autotelem(void);
 int execcmd(char *buf);

@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#ifdef USARTv1
+#ifdef AT32F4
 #define USART2_TDR USART2_DR
 #define USART2_RDR USART2_DR
 #define USART2_ISR USART2_SR
@@ -33,11 +33,10 @@ void initio(void) {
 #ifdef IO_AUX
 	GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
 	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
-	TIM14_ARR = CLK_CNT(20000) - 1;
-	TIM14_EGR = TIM_EGR_UG;
-	TIM14_CR1 = TIM_CR1_CEN;
-	TIM14_SR = ~TIM_SR_UIF;
-	while (!(TIM14_SR & TIM_SR_UIF)) { // Wait for 50us high level on A15
+	TIM1_ARR = CLK_CNT(20000) - 1;
+	TIM1_SR = ~TIM_SR_UIF;
+	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM1_CR1 & TIM_CR1_CEN) { // Wait for 50us high level on A15
 		if (!(GPIOA_IDR & 0x8000)) { // A15 low
 			USART2_CR3 = USART_CR3_HDSEL;
 			break;
@@ -57,22 +56,23 @@ void initio(void) {
 	TIM3_EGR = TIM_EGR_UG;
 	TIM3_CR1 = TIM_CR1_CEN;
 #endif
-	TIM14_PSC = CLK_CNT(10000) - 1; // 0.1ms resolution
-	TIM14_ARR = 4999; // 500ms I/O timeout
-	TIM14_EGR = TIM_EGR_UG;
-	TIM14_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
+	TIM1_PSC = CLK_CNT(10000) - 1; // 0.1ms resolution
+	TIM1_ARR = 4999; // 500ms I/O timeout
+	TIM1_CR1 = TIM_CR1_URS;
+	TIM1_EGR = TIM_EGR_UG;
+	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
 }
 
 #ifdef IO_PA2
 int recvbuf(char *buf, int len) {
-	TIM14_EGR = TIM_EGR_UG;
-	TIM14_SR = ~TIM_SR_UIF;
+	TIM1_EGR = TIM_EGR_UG;
+	TIM1_SR = ~TIM_SR_UIF;
 	for (int i = 0; i < len; ++i) {
 		while (!(USART2_ISR & USART_ISR_RXNE)) {
-			if (TIM14_SR & TIM_SR_UIF) return 0; // Timeout
+			if (TIM1_SR & TIM_SR_UIF) return 0; // Timeout
 		}
 		if (USART2_ISR & (USART_ISR_FE | USART_ISR_NF)) { // Data error
-#ifdef USARTv1
+#ifdef AT32F4
 			USART2_DR; // Clear flags
 #else
 			USART2_ICR = USART_ICR_FECF | USART_ICR_NCF;
@@ -80,7 +80,7 @@ int recvbuf(char *buf, int len) {
 			return 0;
 		}
 		buf[i] = USART2_RDR; // Clear RXNE
-		TIM14_EGR = TIM_EGR_UG;
+		TIM1_EGR = TIM_EGR_UG;
 	}
 	return 1;
 }
@@ -96,8 +96,8 @@ void sendbuf(const char *buf, int len) {
 }
 #else
 int recvbuf(char *buf, int len) {
-	TIM14_EGR = TIM_EGR_UG;
-	TIM14_SR = ~TIM_SR_UIF;
+	TIM1_EGR = TIM_EGR_UG;
+	TIM1_SR = ~TIM_SR_UIF;
 	int n = 10, b = 0;
 	for (;;) {
 		int sr = TIM3_SR;
@@ -118,13 +118,13 @@ int recvbuf(char *buf, int len) {
 			if (!p) return 0; // Data error
 			*buf++ = b;
 			if (!--len) return 1;
-			TIM14_EGR = TIM_EGR_UG;
+			TIM1_EGR = TIM_EGR_UG;
 		}
 		if (sr & TIM_SR_CC2IF) { // Falling edge
 			TIM3_SR = ~TIM_SR_CC2IF;
 			if (n == 10) n = 0;
 		}
-		if (TIM14_SR & TIM_SR_UIF) return 0; // Timeout
+		if (TIM1_SR & TIM_SR_UIF) return 0; // Timeout
 	}
 }
 

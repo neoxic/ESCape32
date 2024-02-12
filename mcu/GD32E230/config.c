@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -19,6 +19,10 @@
 #include <libopencm3/stm32/f1/adc.h>
 #include "common.h"
 
+#if SENS_MAP == 0xA3 // A3 (volt)
+#define SENS_CHAN 0x3
+#endif
+
 #define ADC1_BASE ADC_BASE
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
@@ -26,6 +30,15 @@ static char len, ain;
 static uint16_t buf[5];
 
 void init(void) {
+	RCC_APB2RSTR = -1;
+	RCC_APB1RSTR = -1;
+	RCC_APB2RSTR = 0;
+	RCC_APB1RSTR = 0;
+	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
+	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN;
+	RCC_APB1ENR = RCC_APB1ENR_TIM3EN | RCC_APB1ENR_TIM6EN | RCC_APB1ENR_WWDGEN;
+	SCB_VTOR = (uint32_t)_rom; // Set vector table address
+
 	RCC_CFGR &= ~RCC_CFGR_SW_PLL;
 	while (RCC_CFGR & RCC_CFGR_SWS_PLL);
 	RCC_CR &= ~RCC_CR_PLLON;
@@ -35,21 +48,10 @@ void init(void) {
 	while (!(RCC_CR & RCC_CR_PLLRDY));
 	RCC_CFGR |= RCC_CFGR_SW_PLL;
 
-	RCC_APB2RSTR = -1;
-	RCC_APB1RSTR = -1;
-	RCC_APB2RSTR = 0;
-	RCC_APB1RSTR = 0;
-	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
-	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN | RCC_APB2ENR_TIM17EN;
-	RCC_APB1ENR = RCC_APB1ENR_TIM3EN | RCC_APB1ENR_TIM14EN | RCC_APB1ENR_WWDGEN;
-	SCB_VTOR = (uint32_t)_rom; // Set vector table address
-
 	// Default GPIO state - analog input
 	GPIOA_AFRL = 0x20000000; // A7 (TIM1_CH1N)
 	GPIOA_AFRH = 0x00000222; // A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_AFRL = 0x00000022; // B0 (TIM1_CH2N), B1 (TIM1_CH3N)
-	GPIOB_AFRH = 0x00000000;
-	GPIOA_PUPDR = 0x24000000;
 	GPIOB_PUPDR = 0x00001000; // B6 (pull-up)
 	GPIOA_MODER = 0xebeabfff; // A7 (TIM1_CH1N), A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_MODER = 0xffffeffa; // B0 (TIM1_CH2N), B1 (TIM1_CH3N), B6 (USART1_TX)
@@ -63,8 +65,8 @@ void init(void) {
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
 	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
-	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1
-	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM15 or USART2
+	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1_TX
+	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM15 or USART2_RX
 
 	nvic_enable_irq(NVIC_TIM1_BRK_UP_TRG_COM_IRQ);
 	nvic_enable_irq(NVIC_TIM1_CC_IRQ);
@@ -79,9 +81,10 @@ void init(void) {
 	RCC_CR2 |= RCC_CR2_HSI14ON; // Enable IRC28M
 	while (!(RCC_CR2 & RCC_CR2_HSI14RDY));
 	ADC1_CR2 = ADC_CR2_ADON | ADC_CR2_TSVREFE;
-	TIM17_ARR = CLK_MHZ - 1;
-	TIM17_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM17_CR1 & TIM_CR1_CEN); // Wait for 1us (RM 10.4.1)
+	TIM6_ARR = CLK_MHZ - 1;
+	TIM6_SR = ~TIM_SR_UIF;
+	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 1us (RM 10.4.1)
 	ADC1_CR2 |= ADC_CR2_CAL;
 	while (ADC1_CR2 & ADC_CR2_CAL);
 	ADC1_CR1 = ADC_CR1_SCAN;
@@ -93,7 +96,7 @@ void init(void) {
 		ADC1_SQR3 |= AIN_PIN << (len++ * 5);
 		ain = 1;
 	}
-	ADC1_SQR3 |= 0x230 << (len * 5); // CH16 (temp), CH17 (vref)
+	ADC1_SQR3 |= 0x230 << (len * 5); // CH17 (vref), CH16 (temp)
 	len += 2;
 	ADC1_SQR1 = (len - 1) << ADC_SQR1_L_LSB;
 	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
@@ -102,7 +105,7 @@ void init(void) {
 	TIM1_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE | TIM_DIER_CC4IE; // Software comparator blanking, ADC trigger
 	TIM1_SMCR = TIM_SMCR_TS_ITR2; // TRGI=TIM3
 	TIM3_CR2 = TIM_CR2_MMS_COMPARE_OC3REF; // TRGO=OC3REF
-	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1;
 	TIM3_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2; // Inverted PWM on OC3
 	TIM3_CCER = TIM_CCER_CC1E; // IC1 on rising edge on TI1 (COMP_OUT)
 }
@@ -141,7 +144,7 @@ void io_analog(void) {
 	GPIOA_MODER |= 0x30; // A2 (analog)
 }
 
-void adc_trig(void) {
+void adctrig(void) {
 	if (DMA1_CCR(1) & DMA_CCR_EN) return;
 	DMA1_CNDTR(1) = len;
 	DMA1_CCR(1) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
@@ -183,5 +186,5 @@ void dma1_channel1_isr(void) {
 	if (ain) x = buf[i++];
 	int r = 4914000 / buf[i + 1];
 	int t = (1450 - (buf[i] * r >> 12)) * 10 / 43 + 25;
-	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
+	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

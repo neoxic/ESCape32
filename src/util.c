@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -16,6 +16,21 @@
 */
 
 #include "common.h"
+
+#ifdef STM32G4
+#define FLASH_CR_STRT FLASH_CR_START
+#endif
+
+static char bec;
+
+void initbec(void) {
+	if (GPIOA_IDR & 0x2000) return; // A13 high
+	GPIOA_ODR |= cfg.bec << 13;
+	GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
+	GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
+	GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
+	bec = 1;
+}
 
 __attribute__((__weak__))
 void hsictl(int x) {
@@ -166,6 +181,7 @@ void checkcfg(void) {
 #endif
 	cfg.volume = clamp(cfg.volume, 0, 100);
 	cfg.beacon = clamp(cfg.beacon, 0, 100);
+	cfg.bec = bec ? clamp(cfg.bec, 0, 3) : 0;
 #if LED_CNT > 0
 	cfg.led &= (1 << LED_CNT) - 1;
 #else
@@ -180,7 +196,7 @@ int savecfg(void) {
 	FLASH_KEYR = FLASH_KEYR_KEY2;
 	FLASH_SR = -1; // Clear errors
 	FLASH_CR = FLASH_CR_PER;
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 	FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((uint32_t)(_cfg - _boot) >> 11) << FLASH_CR_PNB_SHIFT; // Erase page
 #else
 	FLASH_AR = (uint32_t)_cfg;
@@ -188,7 +204,7 @@ int savecfg(void) {
 #endif
 	while (FLASH_SR & FLASH_SR_BSY);
 	FLASH_CR = FLASH_CR_PG;
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 #define T uint32_t
 #else
 #define T uint16_t
@@ -199,14 +215,14 @@ int savecfg(void) {
 #undef T
 	while (src < end) { // Write data
 		*dst++ = *src++;
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 		*dst++ = *src++;
 #endif
 		while (FLASH_SR & FLASH_SR_BSY);
 	}
 	FLASH_CR = FLASH_CR_LOCK;
 	__enable_irq();
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return 0;
 #else
 	if (FLASH_SR & (FLASH_SR_PGERR | FLASH_SR_WRPRTERR)) return 0;
@@ -275,7 +291,7 @@ int playmusic(const char *str, int vol) {
 			str = end;
 		}
 		uint32_t t = tickms + tmp * a;
-		while (t != tickms) TIM14_EGR = TIM_EGR_UG; // Reset arming timeout
+		while (t != tickms) TIM_EGR(GPTIM) = TIM_EGR_UG; // Reset arming timeout
 		TIM1_CCR2 = 0; // Preload silence
 	}
 #ifdef PWM_ENABLE

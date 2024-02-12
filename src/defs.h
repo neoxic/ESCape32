@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -58,62 +58,27 @@
 #define SENS_MAP 0
 #define SENS_CNT 0
 #define SENS_CHAN 0
+#elif SENS_MAP < 0x100
+#define SENS_CNT 1
+#elif SENS_MAP < 0x10000
+#define SENS_CNT 2
 #endif
 
+#ifndef LED_MAP
+#define LED_MAP 0
 #ifdef LED_WS2812
 #define LED_CNT 3
-#elif !defined LED_MAP
+#else
 #define LED_CNT 0
-#elif LED_MAP == 0xB8
-#define LED_CNT 1
-#define LED1_PORT B
-#define LED1_PIN 8
-#elif LED_MAP == 0xA15B3B4
-#define LED_CNT 3
-#define LED1_PORT A
-#define LED1_PIN 15
-#define LED2_PORT B
-#define LED2_PIN 3
-#define LED3_PORT B
-#define LED3_PIN 4
-#elif LED_MAP == 0xA15B5B3
-#define LED_CNT 3
-#define LED1_PORT A
-#define LED1_PIN 15
-#define LED2_PORT B
-#define LED2_PIN 5
-#define LED3_PORT B
-#define LED3_PIN 3
-#elif LED_MAP == 0xB5B3A15
-#define LED_CNT 3
-#define LED1_PORT B
-#define LED1_PIN 5
-#define LED2_PORT B
-#define LED2_PIN 3
-#define LED3_PORT A
-#define LED3_PIN 15
-#elif LED_MAP == 0xB5B4B3
-#define LED_CNT 3
-#define LED1_PORT B
-#define LED1_PIN 5
-#define LED2_PORT B
-#define LED2_PIN 4
-#define LED3_PORT B
-#define LED3_PIN 3
-#elif LED_MAP == 0xB8B5B3
-#define LED_CNT 3
-#define LED1_PORT B
-#define LED1_PIN 8
-#define LED2_PORT B
-#define LED2_PIN 5
-#define LED3_PORT B
-#define LED3_PIN 3
 #endif
-
-#ifdef LED_INV
-#define LED1_INV
-#define LED2_INV
-#define LED3_INV
+#elif LED_MAP < 0x100
+#define LED_CNT 1
+#elif LED_MAP < 0x10000
+#define LED_CNT 2
+#elif LED_MAP < 0x1000000
+#define LED_CNT 3
+#elif LED_MAP < 0x100000000
+#define LED_CNT 4
 #endif
 
 #ifndef VOLT_MUL

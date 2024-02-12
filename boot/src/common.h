@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
-#ifdef USARTv1
+#ifdef AT32F4
 #include <libopencm3/cm3/common.h>
 #include <libopencm3/stm32/f1/usart.h>
 #else
@@ -32,6 +32,12 @@
 #include "config.h"
 
 #define CLK_CNT(rate) ((CLK + ((rate) >> 1)) / (rate))
+
+#ifdef IO_PA6
+#define TIM3_IDR (GPIOA_IDR & 0x40) // A6
+#else
+#define TIM3_IDR (GPIOB_IDR & 0x10) // B4
+#endif
 
 extern char _rom[], _rom_end[], _ram_end[]; // Linker exports
 

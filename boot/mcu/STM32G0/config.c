@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -18,15 +18,15 @@
 #include "common.h"
 
 void init(void) {
+	RCC_IOPENR = 0x3; // GPIOAEN=1, GPIOBEN=1
+	RCC_AHBENR = RCC_AHBENR_FLASHEN | RCC_AHBENR_CRCEN;
+	RCC_APBENR2 = RCC_APBENR2_TIM1EN;
+
 	FLASH_ACR = FLASH_ACR_LATENCY_2WS | FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DBG_SWEN;
 	RCC_PLLCFGR = RCC_PLLCFGR_PLLSRC_HSI16 | 8 << RCC_PLLCFGR_PLLN_SHIFT | RCC_PLLCFGR_PLLREN | 1 << RCC_PLLCFGR_PLLR_SHIFT;
 	RCC_CR |= RCC_CR_PLLON;
 	while (!(RCC_CR & RCC_CR_PLLRDY));
 	RCC_CFGR = RCC_CFGR_SW_PLLRCLK;
-
-	RCC_IOPENR = 0x3; // GPIOAEN=1, GPIOBEN=1
-	RCC_AHBENR = RCC_AHBENR_FLASHEN | RCC_AHBENR_CRCEN;
-	RCC_APBENR2 = RCC_APBENR2_TIM14EN;
 
 #ifdef IO_PA2
 	RCC_APBENR1 |= RCC_APBENR1_USART2EN;

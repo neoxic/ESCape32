@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -19,29 +19,33 @@
 #include <libopencm3/stm32/adc.h>
 #include "common.h"
 
+#if SENS_MAP == 0xA0 // A0 (volt)
+#define SENS_CHAN 0x0
+#elif SENS_MAP == 0xA6 // A6 (volt)
+#define SENS_CHAN 0x6
+#elif SENS_MAP == 0xA5A4 // A5 (volt), A4 (curr)
+#define SENS_CHAN 0x54
+#elif SENS_MAP == 0xA6A4 // A6 (volt), A4 (curr)
+#define SENS_CHAN 0x64
+#endif
+
 #define COMP1_CSR MMIO32(COMP_BASE + 0x0)
 #define COMP2_CSR MMIO32(COMP_BASE + 0x4)
-
-#define ADC1_ISR ADC_ISR(ADC1)
-#define ADC1_CR ADC_CR(ADC1)
-#define ADC1_CFGR1 ADC_CFGR1(ADC1)
-#define ADC1_SMPR ADC_SMPR1(ADC1)
-#define ADC1_CHSELR ADC_CHSELR(ADC1)
-#define ADC1_DR ADC_DR(ADC1)
-#define ADC1_CCR ADC_CCR(ADC1)
 
 static char len, ain;
 static uint16_t buf[10];
 
 void init(void) {
-	RCC_APBRSTR2 = -1;
+	RCC_AHBRSTR = -1;
 	RCC_APBRSTR1 = -1;
-	RCC_APBRSTR2 = 0;
+	RCC_APBRSTR2 = -1;
+	RCC_AHBRSTR = 0;
 	RCC_APBRSTR1 = 0;
+	RCC_APBRSTR2 = 0;
 	RCC_IOPENR = 0x3; // GPIOAEN=1, GPIOBEN=1
-	RCC_AHBENR = RCC_AHBENR_FLASHEN | RCC_AHBENR_DMAEN;
-	RCC_APBENR2 = RCC_APBENR2_SYSCFGEN | RCC_APBENR2_TIM1EN | RCC_APBENR2_USART1EN | RCC_APBENR2_TIM14EN | RCC_APBENR2_TIM16EN | RCC_APBENR2_ADCEN;
-	RCC_APBENR1 = RCC_APBENR1_TIM2EN | RCC_APBENR1_WWDGEN;
+	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_FLASHEN;
+	RCC_APBENR1 = RCC_APBENR1_TIM2EN | RCC_APBENR1_TIM6EN | RCC_APBENR1_WWDGEN;
+	RCC_APBENR2 = RCC_APBENR2_SYSCFGEN | RCC_APBENR2_TIM1EN | RCC_APBENR2_USART1EN | RCC_APBENR2_ADCEN;
 	SYSCFG_CFGR1 = SYSCFG_CFGR1_PA11_RMP | SYSCFG_CFGR1_PA12_RMP; // A11->A9, A12->A10
 	SCB_VTOR = (uint32_t)_rom; // Set vector table address
 
@@ -49,8 +53,6 @@ void init(void) {
 	GPIOA_AFRL = 0x20000000; // A7 (TIM1_CH1N)
 	GPIOA_AFRH = 0x00000222; // A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_AFRL = 0x00000002; // B0 (TIM1_CH2N)
-	GPIOB_AFRH = 0x00000000;
-	GPIOA_PUPDR = 0x24000000;
 	GPIOB_PUPDR = 0x00001000; // B6 (pull-up)
 	GPIOA_MODER = 0xebeabfff; // A7 (TIM1_CH1N), A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
 	GPIOB_MODER = 0xffffeffe; // B0 (TIM1_CH2N), B6 (USART1_TX)
@@ -85,9 +87,9 @@ void init(void) {
 	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_LPUART2_IRQ, 0x40);
-	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
-	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, 0x80); // USART1
-	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ, 0x40); // TIM3 or TIM15 or USART2
+	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x40); // TIM3 or TIM15 or USART2_RX
+	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_IRQ, 0x80); // USART1_TX
+	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ, 0x80); // ADC
 
 	nvic_enable_irq(NVIC_TIM1_BRK_UP_TRG_COM_IRQ);
 	nvic_enable_irq(NVIC_TIM2_IRQ);
@@ -99,51 +101,54 @@ void init(void) {
 	nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL4_7_DMAMUX_IRQ);
 
-	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_ADC;
+#ifdef IO_PA2
+	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_TIM15_CH1;
+#else
+	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_TIM3_CH1;
+#endif
 	DMAMUX1_CxCR(2) = DMAMUX_CxCR_DMAREQ_ID_USART1_RX;
 	DMAMUX1_CxCR(3) = DMAMUX_CxCR_DMAREQ_ID_USART1_TX;
-#ifdef IO_PA2
-	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_TIM15_CH1;
-#else
-	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_TIM3_CH1;
-#endif
+	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_ADC;
 
-	ADC1_CR = ADC_CR_ADVREGEN;
-	TIM16_ARR = CLK_KHZ / 50 - 1;
-	TIM16_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM16_CR1 & TIM_CR1_CEN); // Wait for 20us (RM0444 15.3.2)
-	ADC1_CR = ADC_CR_ADCAL;
-	while (ADC1_CR & ADC_CR_ADCAL);
-	ADC1_CR = ADC_CR_ADEN;
-	while (!(ADC1_ISR & ADC_ISR_ADRDY));
-	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE | ADC_CFGR1_CHSELRMOD;
-	ADC1_SMPR = ADC_SMPR_SMPx_160DOT5CYC; // Sampling time ~10us @ HSI16
-	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = SENS_CHAN;
+	ADC_CFGR2(ADC1) = ADC_CFGR2_CKMODE_PCLK_DIV4 << ADC_CFGR2_CKMODE_SHIFT;
+	ADC_CCR(ADC1) = ADC_CCR_VREFEN | ADC_CCR_TSEN;
+	ADC_CR(ADC1) = ADC_CR_ADVREGEN;
+	TIM6_ARR = CLK_KHZ / 50 - 1;
+	TIM6_SR = ~TIM_SR_UIF;
+	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 20us (RM 15.3.2)
+	ADC_CR(ADC1) = ADC_CR_ADVREGEN | ADC_CR_ADCAL;
+	while (ADC_CR(ADC1) & ADC_CR_ADCAL);
+	ADC_CR(ADC1) = ADC_CR_ADEN | ADC_CR_ADVREGEN;
+	while (!(ADC_ISR(ADC1) & ADC_ISR_ADRDY));
+	ADC_CFGR1(ADC1) = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE | ADC_CFGR1_CHSELRMOD;
+	ADC_SMPR1(ADC1) = ADC_SMPR_SMPx_160DOT5CYC; // Sampling time ~10us @ PCLK/4=16Mhz
+	ADC_CHSELR(ADC1) = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= AIN_PIN << (len++ << 2);
+		ADC_CHSELR(ADC1) |= AIN_PIN << (len++ << 2);
 		ain = 1;
 	}
-	ADC1_CHSELR |= 0xfdc << (len << 2); // CH12 (temp), CH13 (vref)
+	ADC_CHSELR(ADC1) |= 0xfdc << (len << 2); // CH13 (vref), CH12 (temp)
 	len += 2;
-	while (!(ADC1_ISR & ADC_ISR_CCRDY));
-	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
-	DMA1_CMAR(1) = (uint32_t)buf;
+	while (!(ADC_ISR(ADC1) & ADC_ISR_CCRDY));
+	DMA1_CPAR(4) = (uint32_t)&ADC_DR(ADC1);
+	DMA1_CMAR(4) = (uint32_t)buf;
 
 	TIM1_SMCR = TIM_SMCR_TS_ITR1; // TRGI=TIM2
 	TIM2_CR2 = TIM_CR2_MMS_COMPARE_OC3REF; // TRGO=OC3REF
-	TIM2_CCMR1 = TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
+	TIM2_CCMR1 = TIM_CCMR1_CC2S_IN_TI2;
 	TIM2_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2; // Inverted PWM on OC3
 	TIM2_CCER = TIM_CCER_CC2E; // IC2 on rising edge on TI2 (COMP2_OUT)
 #if defined IO_PA2 || defined IO_PA6
-	TIM2_CCMR1 |= TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+	TIM2_CCMR1 |= TIM_CCMR1_CC1S_IN_TI1;
 	TIM2_CCER |= TIM_CCER_CC1E; // IC1 on rising edge on TI1 (COMP1_OUT)
 #endif
 }
 
 #ifdef LED_WS2812
 void initled(void) {
+	RCC_APBENR2 |= RCC_APBENR2_TIM16EN;
 	GPIOB_AFRH |= 0x2; // B8 (TIM16_CH1)
 	GPIOB_MODER &= ~0x10000; // B8 (TIM16_CH1)
 	TIM16_BDTR = TIM_BDTR_MOE;
@@ -154,7 +159,7 @@ void initled(void) {
 	TIM16_RCR = 7;
 	DMAMUX1_CxCR(6) = DMAMUX_CxCR_DMAREQ_ID_TIM16_CH1;
 	DMA1_CPAR(6) = (uint32_t)&TIM16_CCR1;
-	DMA1_CMAR(6) = (uint32_t)&buf[5];
+	DMA1_CMAR(6) = (uint32_t)(buf + 5);
 }
 
 void ledctl(int x) {
@@ -242,7 +247,7 @@ void io_serial(void) {
 	RCC_APBENR1 |= RCC_APBENR1_USART2EN;
 	GPIOA_AFRL = (GPIOA_AFRL & ~0xf00) | 0x100; // A2 (USART2_TX)
 	GPIOA_AFRH |= 0x10000000; // A15 (USART2_RX)
-	DMAMUX1_CxCR(4) = DMAMUX_CxCR_DMAREQ_ID_USART2_RX;
+	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_USART2_RX;
 	DMAMUX1_CxCR(5) = DMAMUX_CxCR_DMAREQ_ID_USART2_TX;
 }
 
@@ -264,27 +269,11 @@ void io_analog(void) {
 }
 #endif
 
-void adc_trig(void) {
-	if (DMA1_CCR(1) & DMA_CCR_EN) return;
-	DMA1_CNDTR(1) = len;
-	DMA1_CCR(1) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
-	ADC1_CR = ADC_CR_ADSTART;
-}
-
-void dma1_channel1_isr(void) {
-	DMA1_IFCR = DMA_IFCR_CTCIF(1);
-	DMA1_CCR(1) = 0;
-	int i = 0, v = 0, c = 0, x = 0;
-#if SENS_CNT == 2
-	c = buf[i++];
-#endif
-#if SENS_CNT > 0
-	v = buf[i++];
-#endif
-	if (ain) x = buf[i++];
-	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
-	int t = (buf[i] * r / 3000 - ST_TSENSE_CAL1_30C) * 100 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 30;
-	adc_data(t, v * r >> 12, c * r >> 12, x * r >> 12);
+void adctrig(void) {
+	if (DMA1_CCR(4) & DMA_CCR_EN) return;
+	DMA1_CNDTR(4) = len;
+	DMA1_CCR(4) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
+	ADC_CR(ADC1) = ADC_CR_ADSTART | ADC_CR_ADVREGEN;
 }
 
 void dma1_channel4_7_dmamux_isr(void) {
@@ -297,5 +286,17 @@ void dma1_channel4_7_dmamux_isr(void) {
 		return;
 	}
 #endif
-	iodma_isr();
+	DMA1_IFCR = DMA_IFCR_CTCIF(4);
+	DMA1_CCR(4) = 0;
+	int i = 0, v = 0, c = 0, x = 0;
+#if SENS_CNT == 2
+	c = buf[i++];
+#endif
+#if SENS_CNT > 0
+	v = buf[i++];
+#endif
+	if (ain) x = buf[i++];
+	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
+	int t = (buf[i] * r / 3000 - ST_TSENSE_CAL1_30C) * 100 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 30;
+	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

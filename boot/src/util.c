@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,6 +17,10 @@
 
 #include "common.h"
 
+#ifdef STM32G4
+#define FLASH_CR_STRT FLASH_CR_START
+#endif
+
 uint32_t crc32(const char *buf, int len) {
 	uint32_t *val = (uint32_t *)buf;
 	len >>= 2;
@@ -33,7 +37,7 @@ int write(char *dst, const char *src, int len) {
 	FLASH_CR = FLASH_CR_PER;
 	uint32_t ofs = ((uint32_t)dst + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); // Align upward to page boundary
 	for (int pos = 0; pos < len; pos += PAGE_SIZE) { // Erase pages
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 		FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((ofs + pos - (uint32_t)_rom) / PAGE_SIZE) << FLASH_CR_PNB_SHIFT;
 #else
 		FLASH_AR = ofs + pos;
@@ -42,7 +46,7 @@ int write(char *dst, const char *src, int len) {
 		while (FLASH_SR & FLASH_SR_BSY);
 	}
 	FLASH_CR = FLASH_CR_PG;
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 	for (int pos = 0; pos < len; pos += 8) { // Write double words
 		*(uint32_t *)(dst + pos) = *(uint32_t *)(src + pos);
 		*(uint32_t *)(dst + pos + 4) = *(uint32_t *)(src + pos + 4);
@@ -53,7 +57,7 @@ int write(char *dst, const char *src, int len) {
 		while (FLASH_SR & FLASH_SR_BSY);
 	}
 	FLASH_CR = FLASH_CR_LOCK;
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return 0;
 #else
 	if (FLASH_SR & (FLASH_SR_PGERR | FLASH_SR_WRPRTERR)) return 0;
@@ -77,10 +81,10 @@ void setwrp(int type) { // 0 - off, 1 - bootloader, 2 - full
 	FLASH_OPTKEYR = FLASH_OPTKEYR_KEY1;
 	FLASH_OPTKEYR = FLASH_OPTKEYR_KEY2;
 	FLASH_SR = -1; // Clear errors
-#ifdef STM32G0
+#if defined STM32G0 || defined STM32G4
 	FLASH_WRP1AR =
 		type == 1 ? (((_rom_end - _rom + 2047) >> 11) - 1) << 16:
-		type == 2 ? 0x7f0000 : 0x7f;
+		type == 2 ? 0xff0000 : 0xff;
 	FLASH_CR = FLASH_CR_OPTSTRT;
 	while (FLASH_SR & FLASH_SR_BSY);
 	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return;
@@ -98,7 +102,10 @@ void setwrp(int type) { // 0 - off, 1 - bootloader, 2 - full
 	}
 	if (FLASH_SR & (FLASH_SR_PGERR | FLASH_SR_WRPRTERR)) return;
 #endif
+#ifdef AT32F4
+	SCB_AIRCR = SCB_AIRCR_VECTKEY | SCB_AIRCR_SYSRESETREQ;
+#else
 	FLASH_CR = FLASH_CR_OBL_LAUNCH;
-	SCB_AIRCR = SCB_AIRCR_VECTKEY | SCB_AIRCR_SYSRESETREQ; // No OBL_LAUNCH on AT32F4
+#endif
 	for (;;); // Never return
 }

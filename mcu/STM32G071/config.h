@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2022-2023 Arseny Vakhrushev <arseny.vakhrushev@me.com>
+** Copyright (C) Arseny Vakhrushev <arseny.vakhrushev@me.com>
 **
 ** This firmware is free software: you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -17,29 +17,24 @@
 
 #pragma once
 
-#if SENS_MAP == 0xA0 // A0 (volt)
-#define SENS_CNT 1
-#define SENS_CHAN 0x0
-#elif SENS_MAP == 0xA6 // A6 (volt)
-#define SENS_CNT 1
-#define SENS_CHAN 0x6
-#elif SENS_MAP == 0xA5A4 // A5 (volt), A4 (curr)
-#define SENS_CNT 2
-#define SENS_CHAN 0x54
-#elif SENS_MAP == 0xA6A4 // A6 (volt), A4 (curr)
-#define SENS_CNT 2
-#define SENS_CHAN 0x64
-#endif
-
 #define CLK 64000000
+#define GPTIM TIM6
 
 #define IFTIM TIM2
-#define IFTIM_ICF 64
+#define IFTIM_XRES 2
+#define IFTIM_ICFL 64
+#define IFTIM_ICMR TIM2_CCMR1
 #if defined IO_PA2 || defined IO_PA6
-#define IFTIM_ICE (TIM_DIER_CC1IE | TIM_DIER_CC2IE)
+#define IFTIM_ICM1 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8)
+#define IFTIM_ICM2 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_4_N_8 | TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_4_N_8)
+#define IFTIM_ICM3 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_2_N_8 | TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_2_N_8)
+#define IFTIM_ICIE (TIM_DIER_CC1IE | TIM_DIER_CC2IE)
 #define IFTIM_ICR (sr & TIM_SR_CC1IF ? TIM2_CCR1 : TIM2_CCR2)
 #else
-#define IFTIM_ICE TIM_DIER_CC2IE
+#define IFTIM_ICM1 (TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8)
+#define IFTIM_ICM2 (TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_4_N_8)
+#define IFTIM_ICM3 (TIM_CCMR1_CC2S_IN_TI2 | TIM_CCMR1_IC2F_DTF_DIV_2_N_8)
+#define IFTIM_ICIE TIM_DIER_CC2IE
 #define IFTIM_ICR TIM2_CCR2
 #endif
 #define IFTIM_OCR TIM2_CCR3
@@ -61,16 +56,15 @@
 #define IOTIM_IDR (GPIOB_IDR & 0x10) // B4
 #endif
 #endif
-#define IOTIM_DMA 4
+#define IOTIM_DMA 1
+#define iodma_isr dma1_channel1_isr
 
 #define USART1_RX_DMA 2
 #define USART1_TX_DMA 3
-#define usart1_dma_isr dma1_channel2_3_isr
+#define usart1_tx_dma_isr dma1_channel2_3_isr
 
-#define USART2_RX_DMA 4
+#define USART2_RX_DMA 1
 #define USART2_TX_DMA 5
 #define usart2_isr usart2_lpuart2_isr
 
 #define tim1_com_isr tim1_brk_up_trg_com_isr
-
-void iodma_isr(void);
