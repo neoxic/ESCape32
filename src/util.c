@@ -21,15 +21,19 @@
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
 
-static char bec;
-
 void initbec(void) {
-	if (GPIOA_IDR & 0x2000) return; // A13 high
+#ifdef USE_BEC
+#if USE_BEC == 0xB3B4
+	GPIOB_ODR |= cfg.bec << 3;
+	GPIOB_MODER &= ~0x280; // B3,B4 (output)
+#else // Use SWD pads
+	if (GPIOA_IDR & 0x6000) return; // Active or not connected
 	GPIOA_ODR |= cfg.bec << 13;
 	GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
 	GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
 	GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
-	bec = 1;
+#endif
+#endif
 }
 
 __attribute__((__weak__))
@@ -181,7 +185,11 @@ void checkcfg(void) {
 #endif
 	cfg.volume = clamp(cfg.volume, 0, 100);
 	cfg.beacon = clamp(cfg.beacon, 0, 100);
-	cfg.bec = bec ? clamp(cfg.bec, 0, 3) : 0;
+#ifdef USE_BEC
+	cfg.bec = clamp(cfg.bec, 0, 3);
+#else
+	cfg.bec = 0;
+#endif
 #if LED_CNT > 0
 	cfg.led &= (1 << LED_CNT) - 1;
 #else

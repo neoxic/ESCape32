@@ -57,6 +57,7 @@ const Cfg cfgdata = {
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
+	.bec = BEC,                 // BEC voltage control
 	.led = LED,                 // LED bits
 };
 

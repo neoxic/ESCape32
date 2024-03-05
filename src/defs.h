@@ -199,6 +199,9 @@
 #ifndef BEACON
 #define BEACON 50
 #endif
+#ifndef BEC
+#define BEC 0
+#endif
 #ifndef LED
 #define LED 0
 #endif
