@@ -32,12 +32,7 @@
 #endif
 #include <libopencm3/stm32/dma.h>
 #include <libopencm3/stm32/flash.h>
-#ifdef STM32G4 // https://github.com/libopencm3/libopencm3/pull/1526
-#define LIBOPENCM3_IWDG_H
-#include <libopencm3/stm32/common/iwdg_common_v2.h>
-#else
 #include <libopencm3/stm32/iwdg.h>
-#endif
 #include <libopencm3/stm32/wwdg.h>
 #include "config.h"
 #include "defs.h"
