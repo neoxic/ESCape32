@@ -82,7 +82,7 @@
 #endif
 
 #ifndef VOLT_MUL
-#define VOLT_MUL 0 // %/10
+#define VOLT_MUL 0 // %
 #endif
 #ifndef CURR_MUL
 #define CURR_MUL 0 // mA/mV

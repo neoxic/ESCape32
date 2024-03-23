@@ -41,10 +41,10 @@ const Cfg cfgdata = {
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
-	.throt_cal = THROT_CAL,     // Throttle calibration
-	.throt_min = THROT_MIN,     // Minimum throttle (us)
-	.throt_mid = THROT_MID,     // Middle throttle (us)
-	.throt_max = THROT_MAX,     // Maximum throttle (us)
+	.throt_cal = THROT_CAL,     // Automatic throttle calibration
+	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
+	.throt_mid = THROT_MID,     // Middle throttle setpoint (us)
+	.throt_max = THROT_MAX,     // Maximum throttle setpoint (us)
 	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
 	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
@@ -52,13 +52,13 @@ const Cfg cfgdata = {
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
 	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
-	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..12]
+	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..16]
 	.prot_curr = PROT_CURR,     // Maximum current (A) [0..255]
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
-	.bec = BEC,                 // BEC voltage control
-	.led = LED,                 // LED bits
+	.bec = BEC,                 // BEC voltage control [0..3]
+	.led = LED,                 // LED on/off bits [0..15]
 };
 
 __attribute__((__section__(".cfg")))
@@ -68,7 +68,7 @@ int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext;
 volatile uint32_t tickms;
 
-static int step, sine, sync, ival;
+static int step, sine, sync, ival, tval;
 static char prep, accl, tick, reverse, ready, brushed;
 
 static void reset(void) {
@@ -159,11 +159,16 @@ static void nextstep(void) {
 		int a = step - 1;
 		int b = a < 120 ? a + 240 : a - 120;
 		int c = a < 240 ? a + 120 : a - 240;
+		int p = cfg.sine_power << 3;
+		if (cfg.prot_temp) { // Temperature threshold
+			int q = max(120 - (tval - (cfg.prot_temp << 2)), 60); // 50% power reduction at 15C above threshold
+			if (p > q) p = q;
+		}
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = CLK_KHZ / 24 - 1;
-		TIM1_CCR1 = DEAD_TIME + (sinedata[a] * cfg.sine_power >> 4);
-		TIM1_CCR2 = DEAD_TIME + (sinedata[b] * cfg.sine_power >> 4);
-		TIM1_CCR3 = DEAD_TIME + (sinedata[c] * cfg.sine_power >> 4);
+		TIM1_CCR1 = DEAD_TIME + (sinedata[a] * p >> 7);
+		TIM1_CCR2 = DEAD_TIME + (sinedata[b] * p >> 7);
+		TIM1_CCR3 = DEAD_TIME + (sinedata[c] * p >> 7);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
 		if (prep) return;
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
@@ -449,8 +454,8 @@ void adcdata(int t, int v, int c, int x) {
 		if (!ready) z += c >> 1;
 		c = 0;
 	}
-	temp = smooth(&st, max(t, 0), 10); // C
-	volt = smooth(&sv, v * VOLT_MUL / 100, 7); // V/100
+	temp = max((tval = smooth(&st, t, 10)) >> 2, 0); // C
+	volt = smooth(&sv, v * VOLT_MUL / 1000, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
 	if (!analog) return;
 	throt = scale(smooth(&sx, x, 5), ANALOG_MIN, ANALOG_MAX, cfg.throt_set * 20, 2000); // Analog throttle
@@ -634,6 +639,10 @@ void main(void) {
 				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max); // Variable PWM frequency
 			}
 			int maxduty = scale(erpm, 0, cfg.duty_ramp * 1000, cfg.duty_spup * 20, 2000);
+			if (cfg.prot_temp) { // Temperature threshold
+				int q = max(2000 - (tval - (cfg.prot_temp << 2)) * 25, 500); // 75% power reduction at 15C above threshold
+				if (maxduty > q) maxduty = q;
+			}
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (newduty > maxduty) newduty = maxduty;
 			int a = accl ? 0 : cfg.duty_rate;
@@ -642,7 +651,11 @@ void main(void) {
 			if (++r == 8) r = 0;
 			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration slew rate limiting
 		}
+#ifdef FULL_DUTY // Allow 100% duty cycle
+		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr--);
+#else
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
+#endif
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = arr;
 		TIM1_CCR1 = ccr;
@@ -686,8 +699,6 @@ void main(void) {
 		if (tick & 15) continue; // 16kHz -> 1kHz
 		if (volt >= cfg.prot_volt * cells * 10) v = 0;
 		else if (++v == 3000) reset(); // Low voltage cutoff after 3s
-		int t = cfg.prot_temp ? clamp((temp - cfg.prot_temp) * 100, 0, 1500) : 0; // 25% power cap @ 15C above threshold
-		int u = cfg.prot_curr ? calcpid(&curpid, curr, cfg.prot_curr * 100) >> 10 : 0; // Current PID control
-		choke = clamp(choke + u, t, 2000);
+		choke = cfg.prot_curr ? clamp(choke + (calcpid(&curpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0; // Current-based PID control
 	}
 }

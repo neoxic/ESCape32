@@ -185,6 +185,6 @@ void dma1_channel1_isr(void) {
 #endif
 	if (ain) x = buf[i++];
 	int r = 4914000 / buf[i + 1];
-	int t = (1450 - (buf[i] * r >> 12)) * 10 / 43 + 25;
+	int t = (1450 - (buf[i] * r >> 12)) * 40 / 43 + 100;
 	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }
