@@ -298,8 +298,7 @@ int playmusic(const char *str, int vol) {
 			if (a < 1 || a > 99) break; // Sanity check
 			str = end;
 		}
-		uint32_t t = tickms + tmp * a;
-		while (t != tickms) TIM_EGR(GPTIM) = TIM_EGR_UG; // Reset arming timeout
+		delay(tmp * a);
 		TIM1_CCR2 = 0; // Preload silence
 	}
 #ifdef PWM_ENABLE

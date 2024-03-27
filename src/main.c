@@ -66,10 +66,11 @@ Cfg cfg = cfgdata;
 
 int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext;
-volatile uint32_t tickms;
 
 static int step, sine, sync, ival, tval;
 static char prep, accl, tick, reverse, ready, brushed;
+static uint32_t tickms, tickmsv;
+static volatile char tickmsf;
 
 static void reset(void) {
 	__disable_irq();
@@ -465,7 +466,15 @@ void sys_tick_handler(void) {
 	SCB_ICSR = SCB_ICSR_PENDSVSET; // Continue with low priority
 	SCB_SCR = 0; // Resume main loop
 	if (++tick & 15) return; // 16kHz -> 1kHz
-	++tickms;
+	if (++tickms == tickmsv) tickmsf = 0;
+}
+
+void delay(int ms) {
+	__disable_irq();
+	tickmsv = tickms + ms;
+	tickmsf = 1;
+	__enable_irq();
+	while (tickmsf) TIM_EGR(GPTIM) = TIM_EGR_UG; // Reset arming timeout
 }
 
 void pend_sv_handler(void) {

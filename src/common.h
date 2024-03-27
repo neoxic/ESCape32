@@ -110,7 +110,6 @@ extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval;
 extern char analog, telreq, telmode, flipdir, beacon, dshotext;
-extern volatile uint32_t tickms;
 
 void init(void);
 void initio(void);
@@ -124,6 +123,7 @@ void io_serial(void);
 void io_analog(void);
 void adctrig(void);
 void adcdata(int t, int v, int c, int x);
+void delay(int ms);
 void kisstelem(void);
 void autotelem(void);
 int execcmd(char *buf);
