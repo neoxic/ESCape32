@@ -440,8 +440,9 @@ static void dshotdma(void) {
 #endif
 		case 40: // Select motor timing
 			if (cnt != 6) break;
-			if ((x = cfg.timing + 1) > 7) x = 1;
-			beepval = cfg.timing = x;
+			if ((x = (cfg.timing >> 1) + 1) > 15 || x < 8) x = 8;
+			cfg.timing = x << 1;
+			beepval = x - 7;
 			break;
 		case 41: // Select PWM frequency
 			if (cnt != 6) break;

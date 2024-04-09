@@ -104,6 +104,11 @@ int smooth(int *s, int x, int n) {
 	return (*s = x + q - (q >> n)) >> n;
 }
 
+void initpid(PID *pid, int x) {
+	pid->i = 0;
+	pid->x = x;
+}
+
 int calcpid(PID *pid, int x, int y) {
 	int p = x - y; // Proportional error
 	int l = pid->Li; // Integral error limit
@@ -137,8 +142,8 @@ void checkcfg(void) {
 	cfg.sine_power = 0;
 #else
 	cfg.brushed = !!cfg.brushed;
-	cfg.timing = clamp(cfg.timing, 1, 7);
-	cfg.sine_range = cfg.damp && cfg.sine_range ? clamp(cfg.sine_range, 5, 25) : 0;
+	cfg.timing = clamp(cfg.timing, 1, 31);
+	cfg.sine_range = cfg.sine_range && cfg.damp && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
 #endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
@@ -149,8 +154,8 @@ void checkcfg(void) {
 	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 100);
 	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
-	cfg.throt_mode = IO_ANALOG ? 0 : clamp(cfg.throt_mode, 0, 2);
-	cfg.throt_set = cfg.arm ? 0 : clamp(cfg.throt_set, 0, 100);
+	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : 2);
+	cfg.throt_set = clamp(cfg.throt_set, 0, cfg.arm ? 0 : 100);
 	cfg.throt_cal = !!cfg.throt_cal;
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
 	cfg.throt_max = clamp(cfg.throt_max, cfg.throt_min + 200, 2100);
@@ -172,6 +177,7 @@ void checkcfg(void) {
 		cfg.telem_mode == 3 ? clamp(cfg.telem_phid, 1, 28):
 		cfg.input_mode == 4 ? clamp(cfg.telem_phid, 0, 4) : 0;
 	cfg.telem_poles = clamp(cfg.telem_poles & ~1, 2, 100);
+	cfg.prot_stall = cfg.prot_stall && !cfg.brushed ? clamp(cfg.prot_stall, 1800, 3200) : 0;
 	cfg.prot_temp = cfg.prot_temp ? clamp(cfg.prot_temp, 60, 140) : 0;
 #if SENS_CNT > 0
 	cfg.prot_volt = cfg.prot_volt ? clamp(cfg.prot_volt, 28, 38) : 0;

@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 10
+#define REVISION 11
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -28,7 +28,7 @@ const Cfg cfgdata = {
 	.damp = DAMP,               // Complementary PWM (active freewheeling)
 	.revdir = REVDIR,           // Reversed motor direction
 	.brushed = BRUSHED,         // Brushed mode
-	.timing = TIMING,           // Motor timing (3.75*X degrees) [1..7]
+	.timing = TIMING,           // Motor timing (15/16 deg) [1..31]
 	.sine_range = SINE_RANGE,   // Sine startup range (%) [0 - off, 5..25]
 	.sine_power = SINE_POWER,   // Sine startup power (%) [1..15]
 	.freq_min = FREQ_MIN,       // Minimum PWM frequency (kHz) [16..48]
@@ -37,7 +37,7 @@ const Cfg cfgdata = {
 	.duty_max = DUTY_MAX,       // Maximum duty cycle (%) [1..100]
 	.duty_spup = DUTY_SPUP,     // Maximum duty cycle during spin-up (%) [1..25]
 	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
-	.duty_rate = DUTY_RATE,     // Acceleration slew rate (0.1*X %/ms) [1..100]
+	.duty_rate = DUTY_RATE,     // Acceleration slew rate (0.1%/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
@@ -50,6 +50,7 @@ const Cfg cfgdata = {
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
 	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..3 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
+	.prot_stall = PROT_STALL,   // Stall protection (ERPM) [0 - off, 1800..3200]
 	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
 	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..16]
@@ -441,7 +442,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int u = ival * 3;
 	accl = t < u >> 2 && sync == 6; // Rapid acceleration
 	ival = (t + u) >> 2; // Commutation interval
-	IFTIM_OCR = (ival >> 1) - (ival * cfg.timing >> 4); // Commutation delay
+	IFTIM_OCR = max((ival >> 1) - (ival * cfg.timing >> 6), 1); // Commutation delay
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_DIER(IFTIM) = 0;
 	if (sync < 6) ++sync;
@@ -583,18 +584,19 @@ void main(void) {
 	}
 #endif
 	laststep();
-	PID curpid = {.Kp = 400, .Ki = 0, .Kd = 600};
-	for (int curduty = 0, running = 0, braking = 2, choke = 0, r = 0, v = 0;;) {
+	PID bpid = {.Kp = 50, .Ki = 0, .Kd = 1000}; // Stall protection
+	PID cpid = {.Kp = 400, .Ki = 0, .Kd = 600}; // Overcurrent protection
+	for (int curduty = 0, running = 0, braking = 2, boost = 0, choke = 0, r = 0, v = 0;;) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		__WFI();
 		int input = throt;
-		int range = brushed ? 0 : cfg.sine_range * 20;
+		int range = cfg.sine_range * 20;
 		int margin = range && sine ? 20 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
 		if (input > 0) { // Forward
 			if (range + margin < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(input, 0, range, 1000 << IFTIM_XRES, 145 << IFTIM_XRES);
+			else sine = scale(input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 			reverse = cfg.revdir ^ flipdir;
 			running = 1;
 			braking = 0;
@@ -605,12 +607,13 @@ void main(void) {
 				braking = 1;
 			} else {
 				if (range + margin < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-				else sine = scale(-input, 0, range, 1000 << IFTIM_XRES, 145 << IFTIM_XRES);
+				else sine = scale(-input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 				reverse = !cfg.revdir ^ flipdir;
 				running = 1;
 			}
 		} else { // Neutral
-			if (sync < 6) { // Drag brake
+			if (sync == 6) boost = 0; // Coasting
+			else { // Drag brake
 				curduty = cfg.duty_drag * 20;
 				running = 0;
 			}
@@ -639,6 +642,9 @@ void main(void) {
 			ival = 10000 << IFTIM_XRES;
 			nextstep();
 			__enable_irq();
+			initpid(&bpid, 10000 << IFTIM_XRES);
+			curduty = 0;
+			boost = 0;
 		}
 #endif
 		int arr = CLK_KHZ / cfg.freq_min;
@@ -652,6 +658,7 @@ void main(void) {
 				int q = max(2000 - (tval - (cfg.prot_temp << 2)) * 25, 500); // 75% power reduction at 15C above threshold
 				if (maxduty > q) maxduty = q;
 			}
+			newduty += boost;
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (newduty > maxduty) newduty = maxduty;
 			int a = accl ? 0 : cfg.duty_rate;
@@ -688,6 +695,8 @@ void main(void) {
 #endif
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			__enable_irq();
+			initpid(&bpid, 10000 << IFTIM_XRES);
+			boost = 0;
 		} else if (!running && step) { // Stop motor
 			__disable_irq();
 			TIM1_DIER &= ~TIM_DIER_COMIE;
@@ -708,6 +717,7 @@ void main(void) {
 		if (tick & 15) continue; // 16kHz -> 1kHz
 		if (volt >= cfg.prot_volt * cells * 10) v = 0;
 		else if (++v == 3000) reset(); // Low voltage cutoff after 3s
-		choke = cfg.prot_curr ? clamp(choke + (calcpid(&curpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0; // Current-based PID control
+		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
+		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
 	}
 }

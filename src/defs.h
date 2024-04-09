@@ -109,7 +109,7 @@
 #define REVDIR 0
 #endif
 #ifndef TIMING
-#define TIMING 4
+#define TIMING 16
 #endif
 #ifndef SINE_RANGE
 #define SINE_RANGE 0
@@ -177,6 +177,9 @@
 #endif
 #ifndef TELEM_POLES
 #define TELEM_POLES 14
+#endif
+#ifndef PROT_STALL
+#define PROT_STALL 0
 #endif
 #ifndef PROT_TEMP
 #define PROT_TEMP 0
