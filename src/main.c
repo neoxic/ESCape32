@@ -442,7 +442,7 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int u = ival * 3;
 	accl = t < u >> 2 && sync == 6; // Rapid acceleration
 	ival = (t + u) >> 2; // Commutation interval
-	IFTIM_OCR = max((ival >> 1) - (ival * cfg.timing >> 6), 1); // Commutation delay
+	IFTIM_OCR = max((ival - (ival * cfg.timing >> 5)) >> 1, 1); // Commutation delay
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_DIER(IFTIM) = 0;
 	if (sync < 6) ++sync;
