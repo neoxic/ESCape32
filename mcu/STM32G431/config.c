@@ -84,7 +84,7 @@ void init(void) {
 	GPIOB_AFRL |= 0x60; // B1 (TIM1_CH3N)
 	GPIOB_MODER &= ~0x4; // B1 (TIM1_CH3N)
 #else
-	GPIOF_AFRH |= 0x6; // F0 (TIM1_CH3N)
+	GPIOF_AFRL |= 0x6; // F0 (TIM1_CH3N)
 	GPIOF_MODER &= ~0x1; // F0 (TIM1_CH3N)
 #endif
 #ifndef ANALOG
