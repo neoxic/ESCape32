@@ -58,9 +58,9 @@
 #define SENS_MAP 0
 #define SENS_CNT 0
 #define SENS_CHAN 0
-#elif SENS_MAP < 0x100
+#elif SENS_MAP <= 0xff
 #define SENS_CNT 1
-#elif SENS_MAP < 0x10000
+#elif SENS_MAP <= 0xffff
 #define SENS_CNT 2
 #endif
 
@@ -71,13 +71,13 @@
 #else
 #define LED_CNT 0
 #endif
-#elif LED_MAP < 0x100
+#elif LED_MAP <= 0xff
 #define LED_CNT 1
-#elif LED_MAP < 0x10000
+#elif LED_MAP <= 0xffff
 #define LED_CNT 2
-#elif LED_MAP < 0x1000000
+#elif LED_MAP <= 0xffffff
 #define LED_CNT 3
-#elif LED_MAP < 0x100000000
+#elif LED_MAP <= 0xffffffff
 #define LED_CNT 4
 #endif
 
@@ -107,6 +107,9 @@
 #endif
 #ifndef REVDIR
 #define REVDIR 0
+#endif
+#ifndef BRUSHED
+#define BRUSHED 0
 #endif
 #ifndef TIMING
 #define TIMING 16
@@ -207,7 +210,4 @@
 #endif
 #ifndef LED
 #define LED 0
-#endif
-#ifndef BRUSHED
-#define BRUSHED 0
 #endif

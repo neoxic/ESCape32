@@ -591,11 +591,11 @@ void main(void) {
 		__WFI();
 		int input = throt;
 		int range = cfg.sine_range * 20;
-		int margin = range && sine ? 20 : 0;
+		int hyst = range && sine ? 20 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
 		if (input > 0) { // Forward
-			if (range + margin < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+			if (range + hyst < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
 			else sine = scale(input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 			reverse = cfg.revdir ^ flipdir;
 			running = 1;
@@ -606,7 +606,7 @@ void main(void) {
 				running = 0;
 				braking = 1;
 			} else {
-				if (range + margin < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+				if (range + hyst < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
 				else sine = scale(-input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 				reverse = !cfg.revdir ^ flipdir;
 				running = 1;
