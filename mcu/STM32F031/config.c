@@ -18,15 +18,21 @@
 #include <libopencm3/stm32/adc.h>
 #include "common.h"
 
+#if SENS_MAP == 0xA5 // A5 (volt)
+#define SENS_CHAN 0x20
+#elif SENS_MAP == 0xA5A4 // A5 (volt), A4 (curr)
+#define SENS_CHAN 0x30
+#endif
+
 static char len, ain;
-static uint16_t buf[3];
+static uint16_t buf[5];
 
 void init(void) {
 	RCC_APB2RSTR = -1;
 	RCC_APB1RSTR = -1;
 	RCC_APB2RSTR = 0;
 	RCC_APB1RSTR = 0;
-	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN | RCC_AHBENR_GPIOFEN;
+	RCC_AHBENR = RCC_AHBENR_DMAEN | RCC_AHBENR_SRAMEN | RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
 	RCC_APB2ENR = RCC_APB2ENR_SYSCFGCOMPEN | RCC_APB2ENR_ADCEN | RCC_APB2ENR_TIM1EN | RCC_APB2ENR_USART1EN | RCC_APB2ENR_TIM16EN;
 	RCC_APB1ENR = RCC_APB1ENR_TIM2EN | RCC_APB1ENR_WWDGEN;
 	SYSCFG_CFGR1 = SYSCFG_CFGR1_MEM_MODE_SRAM; // Map SRAM at 0x00000000
@@ -35,13 +41,22 @@ void init(void) {
 	// Default GPIO state - analog input
 	GPIOA_AFRL = 0x00000222; // A0 (TIM2_CH1), A1 (TIM2_CH2), A2 (TIM2_CH3)
 	GPIOA_AFRH = 0x00000222; // A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
-	GPIOB_AFRH = 0x22200000; // B13 (TIM1_CH1N), B14 (TIM1_CH2N), B15 (TIM1_CH3N)
-	GPIOF_ODR = 0x00c0; // F7,F6=11 (maximum over-current threshold)
 	GPIOA_PUPDR = 0x24000015; // A0,A1,A2 (pull-up)
 	GPIOB_PUPDR = 0x00001000; // B6 (pull-up)
 	GPIOA_MODER = 0xebeaffea; // A0 (TIM2_CH1), A1 (TIM2_CH2), A2 (TIM2_CH3), A8 (TIM1_CH1), A9 (TIM1_CH2), A10 (TIM1_CH3)
-	GPIOB_MODER = 0xabffefff; // B6 (USART1_TX), B13 (TIM1_CH1N), B14 (TIM1_CH2N), B15 (TIM1_CH3N)
+	GPIOB_MODER = 0xffffefff; // B6 (USART1_TX)
+#ifdef STSPIN32F0
+	RCC_AHBENR |= RCC_AHBENR_GPIOFEN;
+	GPIOB_AFRH |= 0x22200000; // B13 (TIM1_CH1N), B14 (TIM1_CH2N), B15 (TIM1_CH3N)
+	GPIOB_MODER &= ~0x54000000; // B13 (TIM1_CH1N), B14 (TIM1_CH2N), B15 (TIM1_CH3N)
+	GPIOF_ODR = 0xc0; // F7,F6=11 (maximum overcurrent threshold)
 	GPIOF_MODER = 0xffff5fff; // F6,F7 (output)
+#else
+	GPIOA_AFRL |= 0x20000000; // A7 (TIM1_CH1N)
+	GPIOB_AFRL |= 0x22; // B0 (TIM1_CH2N), B1 (TIM1_CH3N)
+	GPIOA_MODER &= ~0x4000; // A7 (TIM1_CH1N)
+	GPIOB_MODER &= ~0x5; // B0 (TIM1_CH2N), B1 (TIM1_CH3N)
+#endif
 #ifndef ANALOG
 	RCC_APB1ENR |= RCC_APB1ENR_TIM3EN;
 	GPIOA_AFRL |= 0x1000000; // A6 (TIM3_CH1)
@@ -69,8 +84,8 @@ void init(void) {
 	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
 	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
 	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = 0x30000; // CH17 (vref), CH16 (temp)
-	len = 2;
+	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH17 (vref), CH16 (temp)
+	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
 		ADC1_CHSELR |= 1 << AIN_PIN;
 		ain = 1;
@@ -100,9 +115,15 @@ void adctrig(void) {
 void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
-	int i = 0;
-	int x = ain ? buf[i++] : 0;
+	int i = 0, v = 0, c = 0, x = 0;
+#if SENS_CNT == 2
+	c = buf[i++];
+#endif
+#if SENS_CNT > 0
+	v = buf[i++];
+#endif
+	if (ain) x = buf[i++];
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
 	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 320 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 120;
-	adcdata(t, 0, 0, x * r >> 12);
+	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
 }

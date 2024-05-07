@@ -612,8 +612,11 @@ void main(void) {
 				running = 1;
 			}
 		} else { // Neutral
+#ifndef SENSORED
 			if (sync == 6) boost = 0; // Coasting
-			else { // Drag brake
+			else // Drag brake
+#endif
+			{
 				curduty = cfg.duty_drag * 20;
 				running = 0;
 			}
