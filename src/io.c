@@ -293,10 +293,10 @@ static void dshotdma(void) {
 	int x = 0;
 	int y = dshotarr1 + 1; // Two bit time
 	int z = y >> 2; // Half-bit time
-	for (int i = 0; i < 32; ++i) {
+	for (int i = 0; i < 32; i += 2) {
 		if (i && dshotbuf[i] >= y) goto resync; // Invalid pulse timing
 		x <<= 1;
-		if (dshotbuf[++i] >= z) x |= 1;
+		if (dshotbuf[i + 1] >= z) x |= 1;
 	}
 	if (dshotcrc(x, dshotinv)) { // Invalid checksum
 	resync:

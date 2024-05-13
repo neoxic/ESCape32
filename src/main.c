@@ -195,9 +195,12 @@ static void nextstep(void) {
 		return;
 	}
 #else
-	static const char map[] = {3, 5, 4, 1, 2, 6}; // map[code] -> step
+	static const char map[] = {2, 4, 3, 6, 1, 5}; // map[code] -> step
 	int code = IFTIM_IDR;
 	if (code < 1 || code > 6) reset(); // Invalid Hall sensor code
+#ifdef INVERTED_HALL
+	code ^= 7;
+#endif
 	step = map[code - 1];
 #endif
 	static const char seq[] = {0x35, 0x19, 0x2b, 0x32, 0x1e, 0x2c}; // Commutation sequence
