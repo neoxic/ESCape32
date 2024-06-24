@@ -45,6 +45,8 @@ const Cfg cfgdata = {
 	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
 	.throt_mid = THROT_MID,     // Middle throttle setpoint (us)
 	.throt_max = THROT_MAX,     // Maximum throttle setpoint (us)
+	.analog_min = ANALOG_MIN,   // Minimum analog throttle setpoint (mV)
+	.analog_max = ANALOG_MAX,   // Maximum analog throttle setpoint (mV)
 	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
 	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
@@ -463,7 +465,7 @@ void adcdata(int t, int v, int c, int x) {
 	volt = smooth(&sv, v * VOLT_MUL / 1000, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
 	if (!analog) return;
-	throt = scale(smooth(&sx, x, 5), ANALOG_MIN, ANALOG_MAX, cfg.throt_set * 20, 2000); // Analog throttle
+	throt = scale(smooth(&sx, x, 5), cfg.analog_min, cfg.analog_max, cfg.throt_set * 20, 2000);
 }
 
 void sys_tick_handler(void) {

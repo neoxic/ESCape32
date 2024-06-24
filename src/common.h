@@ -84,6 +84,8 @@ typedef struct {
 	uint16_t throt_min;
 	uint16_t throt_mid;
 	uint16_t throt_max;
+	uint16_t analog_min;
+	uint16_t analog_max;
 	char input_mode;
 	char input_chid;
 	char telem_mode;

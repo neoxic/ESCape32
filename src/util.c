@@ -160,6 +160,8 @@ void checkcfg(void) {
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
 	cfg.throt_max = clamp(cfg.throt_max, cfg.throt_min + 200, 2100);
 	cfg.throt_mid = clamp(cfg.throt_mid, cfg.throt_min + 100, cfg.throt_max - 100);
+	cfg.analog_min = clamp(cfg.analog_min, 0, 3200);
+	cfg.analog_max = clamp(cfg.analog_max, cfg.analog_min + 200, 3400);
 #ifdef IO_PA2
 	cfg.input_mode = clamp(cfg.input_mode, 0, 5);
 	cfg.input_chid = cfg.input_mode >= 3 ? clamp(cfg.input_chid, 1, cfg.input_mode == 3 ? 14 : 16) : 0;

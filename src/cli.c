@@ -39,21 +39,23 @@
 	XX(18, val, throt_min) \
 	XX(19, val, throt_mid) \
 	XX(20, val, throt_max) \
-	XX(21, val, input_mode) \
-	XX(22, val, input_chid) \
-	XX(23, val, telem_mode) \
-	XX(24, val, telem_phid) \
-	XX(25, val, telem_poles) \
-	XX(26, val, prot_stall) \
-	XX(27, val, prot_temp) \
-	XX(28, val, prot_volt) \
-	XX(29, val, prot_cells) \
-	XX(30, val, prot_curr) \
-	XX(31, str, music) \
-	XX(32, val, volume) \
-	XX(33, val, beacon) \
-	XX(34, val, bec) \
-	XX(35, val, led) \
+	XX(21, val, analog_min) \
+	XX(22, val, analog_max) \
+	XX(23, val, input_mode) \
+	XX(24, val, input_chid) \
+	XX(25, val, telem_mode) \
+	XX(26, val, telem_phid) \
+	XX(27, val, telem_poles) \
+	XX(28, val, prot_stall) \
+	XX(29, val, prot_temp) \
+	XX(30, val, prot_volt) \
+	XX(31, val, prot_cells) \
+	XX(32, val, prot_curr) \
+	XX(33, str, music) \
+	XX(34, val, volume) \
+	XX(35, val, beacon) \
+	XX(36, val, bec) \
+	XX(37, val, led) \
 
 static int beep = -1;
 
