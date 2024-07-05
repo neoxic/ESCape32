@@ -23,12 +23,13 @@
 
 void initbec(void) {
 #ifdef USE_BEC
-#if USE_BEC == 0xB3B4
-	GPIOB_ODR |= cfg.bec << 3;
-	GPIOB_MODER &= ~0x280; // B3,B4 (output)
+	int x = cfg.bec;
+#if USE_BEC == 0xB3B5
+	GPIOB_ODR |= (x & 1) << 3 | (x & 2) << 4;
+	GPIOB_MODER &= ~0x880; // B3,B5 (output)
 #else // Use SWD pads
 	if (GPIOA_IDR & 0x6000) return; // Active or not connected
-	GPIOA_ODR |= cfg.bec << 13;
+	GPIOA_ODR |= x << 13;
 	GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
 	GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
 	GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
