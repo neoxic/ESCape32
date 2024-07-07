@@ -144,8 +144,8 @@ void init(void) {
 	len1 = 2;
 	len2 = SENS_CNT;
 	if (IO_ANALOG) {
-#ifdef ANALOG_PIN
-		val2 |= ANALOG_PIN << (len2++ * 6);
+#ifdef ANALOG_CHAN
+		val2 |= ANALOG_CHAN << (len2++ * 6);
 #else
 		val1 = val1 << 6 | 0x3; // ADC1_IN3 (PA2)
 		++len1;

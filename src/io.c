@@ -110,7 +110,7 @@ static void entryirq(void) {
 	int t = TIM_CCR1(IOTIM); // Time between two rising edges
 	if (IO_ANALOG) {
 	analog:
-#ifndef ANALOG_PIN
+#ifndef ANALOG_CHAN
 		io_analog();
 		analog = 1;
 #endif

@@ -522,7 +522,7 @@ void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
 	throt = cfg.throt_set * 20;
-#if defined ANALOG || defined ANALOG_PIN
+#if defined ANALOG || defined ANALOG_CHAN
 	analog = IO_ANALOG;
 #endif
 	brushed = cfg.brushed;

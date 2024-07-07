@@ -87,7 +87,7 @@ void init(void) {
 	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH17 (vref), CH16 (temp)
 	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= 1 << AIN_PIN;
+		ADC1_CHSELR |= 1 << AIN_CHAN;
 		ain = 1;
 		++len;
 	}

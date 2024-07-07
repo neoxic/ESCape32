@@ -124,7 +124,7 @@ void checkcfg(void) {
 #ifdef ANALOG
 	cfg.arm = 0;
 #else
-#ifndef ANALOG_PIN
+#ifndef ANALOG_CHAN
 	if (IO_ANALOG) cfg.arm = 1; // Ensure low level on startup
 	else
 #endif
@@ -167,7 +167,7 @@ void checkcfg(void) {
 	cfg.input_mode = clamp(cfg.input_mode, 0, 5);
 	cfg.input_chid = cfg.input_mode >= 3 ? clamp(cfg.input_chid, 1, cfg.input_mode == 3 ? 14 : 16) : 0;
 #else
-#if defined IO_PA6 || defined ANALOG_PIN
+#if defined IO_PA6 || defined ANALOG_CHAN
 	cfg.input_mode = clamp(cfg.input_mode, 0, 1);
 #else
 	cfg.input_mode = 0;

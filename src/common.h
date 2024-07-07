@@ -43,18 +43,18 @@
 
 #ifdef ANALOG
 #define IO_ANALOG (cfg.throt_set < 100)
-#elif defined IO_PA2 || defined IO_PA6 || defined ANALOG_PIN
+#elif defined IO_PA2 || defined IO_PA6 || defined ANALOG_CHAN
 #define IO_ANALOG (cfg.input_mode == 1)
 #else
 #define IO_ANALOG 0
 #endif
 
-#ifdef ANALOG_PIN
-#define AIN_PIN ANALOG_PIN
+#ifdef ANALOG_CHAN
+#define AIN_CHAN ANALOG_CHAN
 #elif defined IO_PA6
-#define AIN_PIN 6
+#define AIN_CHAN 6
 #else
-#define AIN_PIN 2
+#define AIN_CHAN 2
 #endif
 
 typedef struct {
