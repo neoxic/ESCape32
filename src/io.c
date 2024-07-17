@@ -45,7 +45,7 @@ static void (*ioirq)(void);
 static void (*iodma)(void);
 
 static char dshotinv, iobuf[1024];
-static uint16_t dshotarr1, dshotarr2, dshotbuf[32];
+static uint16_t dshotarr1, dshotarr2, dshotbuf1[32], dshotbuf2[23] = {-1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, 0, -1, -1, -1};
 
 void initio(void) {
 	ioirq = entryirq;
@@ -192,7 +192,7 @@ static void entryirq(void) {
 	TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	DMA1_CPAR(IOTIM_DMA) = (uint32_t)&TIM_CCR1(IOTIM);
-	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf;
+	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf1;
 }
 
 static void calibirq(void) { // Align pulse period to the nearest millisecond via HSI trimming within 6.25% margin
@@ -258,6 +258,39 @@ static void dshotirq(void) {
 	TIM_DIER(IOTIM) = TIM_DIER_CC1DE;
 }
 
+static void dshotreset(void) {
+#ifdef AT32F4 // Errata 1.5.1
+	RCC_APB2RSTR = RCC_APB2RSTR_TIM15RST;
+	RCC_APB2RSTR = 0;
+	TIM15_BDTR = TIM_BDTR_MOE;
+	TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
+#else
+	TIM_CCER(IOTIM) = 0;
+	TIM_DIER(IOTIM) = 0;
+	TIM_CR2(IOTIM) = 0;
+#endif
+	DMA1_CCR(IOTIM_DMA) = 0;
+	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf1;
+	DMA1_CNDTR(IOTIM_DMA) = 32;
+	DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
+	TIM_ARR(IOTIM) = -1;
+	TIM_EGR(IOTIM) = TIM_EGR_UG;
+	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
+	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
+	TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
+	TIM_DIER(IOTIM) = TIM_DIER_CC1DE;
+}
+
+static void dshotresync(void) {
+	if (dshotinv) dshotreset();
+	DMA1_CCR(IOTIM_DMA) = 0;
+	TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+	TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
+	TIM_EGR(IOTIM) = TIM_EGR_UG;
+	TIM_SR(IOTIM) = ~TIM_SR_UIF;
+	TIM_DIER(IOTIM) = TIM_DIER_UIE;
+}
+
 static int dshotcrc(int x, int inv) {
 	int a = x;
 	for (int b = x; b >>= 4; a ^= b);
@@ -269,56 +302,7 @@ static void dshotdma(void) {
 	static const char gcr[] = {0x19, 0x1b, 0x12, 0x13, 0x1d, 0x15, 0x16, 0x17, 0x1a, 0x09, 0x0a, 0x0b, 0x1e, 0x0d, 0x0e, 0x0f};
 	static int cmd, cnt, rep;
 	if (DMA1_CCR(IOTIM_DMA) & DMA_CCR_DIR) {
-#ifdef AT32F4 // Errata 1.5.1
-		RCC_APB2RSTR = RCC_APB2RSTR_TIM15RST;
-		RCC_APB2RSTR = 0;
-		TIM15_BDTR = TIM_BDTR_MOE;
-		TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
-#else
-		TIM_CCER(IOTIM) = 0;
-		TIM_DIER(IOTIM) = 0;
-		TIM_CR2(IOTIM) = 0;
-#endif
-		DMA1_CCR(IOTIM_DMA) = 0;
-		DMA1_CNDTR(IOTIM_DMA) = 32;
-		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
-		TIM_ARR(IOTIM) = -1;
-		TIM_EGR(IOTIM) = TIM_EGR_UG;
-		TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
-		TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
-		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
-		TIM_DIER(IOTIM) = TIM_DIER_CC1DE;
-		return;
-	}
-	int x = 0;
-	int y = dshotarr1 + 1; // Two bit time
-	int z = y >> 2; // Half-bit time
-	for (int i = 0; i < 32; i += 2) {
-		if (i && dshotbuf[i] >= y) goto resync; // Invalid pulse timing
-		x <<= 1;
-		if (dshotbuf[i + 1] >= z) x |= 1;
-	}
-	if (dshotcrc(x, dshotinv)) { // Invalid checksum
-	resync:
-		DMA1_CCR(IOTIM_DMA) = 0;
-		TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
-		TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
-		TIM_EGR(IOTIM) = TIM_EGR_UG;
-		TIM_SR(IOTIM) = ~TIM_SR_UIF;
-		TIM_DIER(IOTIM) = TIM_DIER_UIE;
-		return;
-	}
-	IWDG_KR = IWDG_KR_RESET;
-	if (dshotinv) { // Bidirectional DSHOT
-		TIM_CCER(IOTIM) = 0;
-		TIM_SMCR(IOTIM) = 0;
-		TIM_CCMR1(IOTIM) = 0; // Disable OC before enabling PWM to force OC1REF update (RM: OC1M, note #2)
-		TIM_CCMR1(IOTIM) = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2;
-		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output as soon as possible (GD32F350 makes a twitch)
-		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
-		DMA1_CCR(IOTIM_DMA) = 0;
-		DMA1_CNDTR(IOTIM_DMA) = 23;
-		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
+		dshotreset();
 		if (!dshotval) {
 			int a = ertm ? min(ertm, 65408) : 65408;
 			int b = 0;
@@ -330,20 +314,46 @@ static void dshotdma(void) {
 		for (int i = 0, j = 0; i < 16; i += 4, j += 5) b |= gcr[a >> i & 0xf] << j;
 		for (int p = -1, i = 19; i >= 0; --i) {
 			if (b >> i & 1) p = ~p;
-			dshotbuf[20 - i] = p;
+			dshotbuf2[20 - i] = p;
 		}
-		dshotbuf[0] = -1;
-		dshotbuf[21] = 0;
-		dshotbuf[22] = 0;
+		if (!rep || !--rep) dshotval = 0;
+		return;
+	}
+	if (dshotinv) { // Bidirectional DSHOT
+		TIM_CCER(IOTIM) = 0;
+		TIM_SMCR(IOTIM) = 0;
+		TIM_CCMR1(IOTIM) = 0; // Disable OC before enabling PWM to force OC1REF update (RM: OC1M, note #2)
+		TIM_CCMR1(IOTIM) = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2;
+		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output as soon as possible
+		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
+		DMA1_CCR(IOTIM_DMA) = 0;
+		DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf2;
+		DMA1_CNDTR(IOTIM_DMA) = 23;
+		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		TIM_CCR1(IOTIM) = 0; // Preload high level
 		__disable_irq();
-		TIM_ARR(IOTIM) = max(CLK_CNT(33333) - TIM_CNT(IOTIM) - 1, 99); // 30us output delay
+		TIM_ARR(IOTIM) = max(CLK_CNT(33333) - TIM_CNT(IOTIM) - 1, 19); // 30us output delay
 		TIM_EGR(IOTIM) = TIM_EGR_UG; // Update registers and trigger DMA to preload the first bit
 		TIM_EGR(IOTIM); // Ensure UEV has happened
 		TIM_ARR(IOTIM) = dshotarr2; // Preload bit time
 		__enable_irq();
-		if (!rep || !--rep) dshotval = 0;
 	}
+	int x = 0;
+	int y = dshotarr1 + 1; // Two bit time
+	int z = y >> 2; // Half-bit time
+	for (int i = 0; i < 32; i += 2) {
+		if (i && dshotbuf1[i] >= y) { // Invalid pulse timing
+			dshotresync();
+			return;
+		}
+		x <<= 1;
+		if (dshotbuf1[i + 1] >= z) x |= 1;
+	}
+	if (dshotcrc(x, dshotinv)) { // Invalid checksum
+		dshotresync();
+		return;
+	}
+	IWDG_KR = IWDG_KR_RESET;
 	int tlm = x & 0x10;
 	x >>= 5;
 	if (!x || x > 47) {
@@ -492,7 +502,7 @@ void usart2_isr(void) {
 	ioirq();
 }
 
-static void resync(void) {
+static void serialresync(void) {
 #ifdef AT32F4
 	USART2_SR, USART2_DR; // Clear flags
 #else
@@ -570,7 +580,7 @@ static int serialreq(char a, int x) {
 
 static void serialdma(void) {
 	if (crc8(iobuf, 4)) { // Invalid checksum
-		resync();
+		serialresync();
 		return;
 	}
 	IWDG_KR = IWDG_KR_RESET;
@@ -589,7 +599,7 @@ static void serialdma(void) {
 
 static void ibusdma(void) {
 	if (iobuf[0] != 0x20 || iobuf[1] != 0x40) { // Invalid frame
-		resync();
+		serialresync();
 		return;
 	}
 	int n = cfg.input_chid;
@@ -602,7 +612,7 @@ static void ibusdma(void) {
 		int v = a | b << 8;
 		if (i == 15) {
 			if (u != v) { // Invalid checksum
-				resync();
+				serialresync();
 				return;
 			}
 			break;
@@ -679,7 +689,7 @@ static void sbustx(void) {
 
 static void sbusdma(void) {
 	if (iobuf[0] != 0x0f) { // Invalid frame
-		resync();
+		serialresync();
 		return;
 	}
 	TIM15_EGR = TIM_EGR_UG;
