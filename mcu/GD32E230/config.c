@@ -21,6 +21,8 @@
 
 #if SENS_MAP == 0xA3 // A3 (volt)
 #define SENS_CHAN 0x3
+#elif SENS_MAP == 0xA6 // A6 (volt)
+#define SENS_CHAN 0x6
 #endif
 
 #define ADC1_BASE ADC_BASE
