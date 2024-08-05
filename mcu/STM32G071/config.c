@@ -21,6 +21,8 @@
 
 #if SENS_MAP == 0xA0 // A0 (volt)
 #define SENS_CHAN 0x0
+#elif SENS_MAP == 0xA5 // A5 (volt)
+#define SENS_CHAN 0x5
 #elif SENS_MAP == 0xA6 // A6 (volt)
 #define SENS_CHAN 0x6
 #elif SENS_MAP == 0xA5A4 // A5 (volt), A4 (curr)
