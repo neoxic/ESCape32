@@ -467,12 +467,12 @@ static void dshotdma(void) {
 			cfg.duty_ramp = x * 10;
 			beepval = x;
 			break;
-		case 43: // Increase acceleration slew rate
+		case 43: // Increase duty cycle slew rate
 			if (cnt != 6) break;
 			if ((x = cfg.duty_rate) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
 			beepval = cfg.duty_rate = x;
 			break;
-		case 44: // Decrease acceleration slew rate
+		case 44: // Decrease duty cycle slew rate
 			if (cnt != 6) break;
 			if ((x = cfg.duty_rate) > 1 && --x > 10) x = x / 5 * 5;
 			beepval = cfg.duty_rate = x;

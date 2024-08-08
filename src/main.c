@@ -37,7 +37,7 @@ const Cfg cfgdata = {
 	.duty_max = DUTY_MAX,       // Maximum duty cycle (%) [1..100]
 	.duty_spup = DUTY_SPUP,     // Maximum duty cycle during spin-up (%) [1..25]
 	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
-	.duty_rate = DUTY_RATE,     // Acceleration slew rate (0.1%/ms) [1..100]
+	.duty_rate = DUTY_RATE,     // Duty cycle slew rate (0.1%/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
@@ -71,7 +71,7 @@ int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext;
 
 static int step, sine, sync, ival, tval;
-static char prep, accl, tick, reverse, ready, brushed;
+static char prep, fast, tick, reverse, ready, brushed;
 static uint32_t tickms, tickmsv;
 static volatile char tickmsf;
 
@@ -87,16 +87,6 @@ static void reset(void) {
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
 }
-
-#ifndef SENSORED
-static void resync(void) {
-	TIM_DIER(IFTIM) = 0;
-	sync = 0;
-	accl = 0;
-	ival = 10000 << IFTIM_XRES;
-	ertm = 100000000;
-}
-#endif
 
 /*
 6-step commutation sequence:
@@ -322,8 +312,10 @@ static void nextstep(void) {
 		cnt = 0;
 	} else if (++cnt == 6) {
 		if ((val > ival ? val - ival : ival - val) > ival >> 1) { // Probably desync
-			resync();
-			return;
+			sync = 0;
+			fast = 0;
+			ival = 5000 << IFTIM_XRES;
+			ertm = 100000000;
 		}
 		val = ival;
 		cnt = 0;
@@ -438,14 +430,18 @@ void iftim_isr(void) { // BEMF zero-crossing
 	int sr = TIM_SR(IFTIM);
 	if ((er & TIM_DIER_UIE) && (sr & TIM_SR_UIF)) { // Timeout
 		TIM_SR(IFTIM) = ~TIM_SR_UIF;
-		resync();
+		TIM_DIER(IFTIM) = 0;
+		sync = 0;
+		fast = 0;
+		ival = 10000 << IFTIM_XRES;
+		ertm = 100000000;
 		return;
 	}
 	if (!(er & IFTIM_ICIE)) return;
 	int t = IFTIM_ICR; // Time since last zero-crossing
 	if (t < ival >> 1) return;
 	int u = ival * 3;
-	accl = t < u >> 2 && sync == 6; // Rapid acceleration
+	fast = (t < u >> 2 || t > u >> 1) && ertm < 2000; // Fast acceleration/deceleration
 	ival = (t + u) >> 2; // Commutation interval
 	IFTIM_OCR = max((ival - (ival * cfg.timing >> 5)) >> 1, 1); // Commutation delay
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
@@ -646,7 +642,7 @@ void main(void) {
 			sine = 0;
 			sync = 0;
 			prep = 0;
-			accl = 0;
+			fast = 0;
 			ival = 10000 << IFTIM_XRES;
 			nextstep();
 			__enable_irq();
@@ -669,11 +665,11 @@ void main(void) {
 			newduty += boost;
 			if ((newduty -= choke) < 0) newduty = 0;
 			if (newduty > maxduty) newduty = maxduty;
-			int a = accl ? 0 : cfg.duty_rate;
+			int a = fast ? 0 : cfg.duty_rate;
 			int b = a >> 3;
 			if (r < (a & 7)) ++b;
 			if (++r == 8) r = 0;
-			if (curduty >= newduty || (curduty += b) > newduty) curduty = newduty; // Acceleration slew rate limiting
+			if (curduty > newduty ? (curduty -= b) < newduty : (curduty += b) > newduty) curduty = newduty; // Duty cycle slew rate limiting
 		}
 #ifdef FULL_DUTY // Allow 100% duty cycle
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr--);
@@ -716,7 +712,7 @@ void main(void) {
 			sine = 0;
 			sync = 0;
 			prep = 0;
-			accl = 0;
+			fast = 0;
 			ertm = 0;
 			erpm = 0;
 			__enable_irq();
