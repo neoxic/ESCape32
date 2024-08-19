@@ -669,7 +669,7 @@ void main(void) {
 			int b = a >> 3;
 			if (r < (a & 7)) ++b;
 			if (++r == 8) r = 0;
-			if (curduty > newduty ? (curduty -= b) < newduty : (curduty += b) > newduty) curduty = newduty; // Duty cycle slew rate limiting
+			if (curduty > newduty ? sync < 6 || (curduty -= b) < newduty : (curduty += b) > newduty) curduty = newduty; // Duty cycle slew rate limiting
 		}
 #ifdef FULL_DUTY // Allow 100% duty cycle
 		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr--);
