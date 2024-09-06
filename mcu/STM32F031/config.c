@@ -95,6 +95,10 @@ void init(void) {
 	DMA1_CMAR(1) = (uint32_t)buf;
 
 	TIM1_SMCR = TIM_SMCR_TS_ITR1; // TRGI=TIM2
+	TIM2_CR2 = TIM_CR2_TI1S | TIM_CR2_MMS_COMPARE_PULSE; // TI1=CH1^CH2^CH3, TRGO=CC1IF
+	TIM2_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
+	TIM2_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
+	TIM2_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
 }
 
 void io_analog(void) {

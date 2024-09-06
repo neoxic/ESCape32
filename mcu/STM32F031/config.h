@@ -18,7 +18,6 @@
 #pragma once
 
 #define CLK 48000000
-#define SENSORED
 #define IO_PA6
 #define IO_TYPE 1
 #define GPTIM TIM16

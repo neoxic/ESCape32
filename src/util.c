@@ -136,16 +136,16 @@ void checkcfg(void) {
 	cfg.damp = !!cfg.damp;
 #endif
 	cfg.revdir = !!cfg.revdir;
-#ifdef SENSORED
-	cfg.brushed = 0;
-	cfg.timing = 0;
-	cfg.sine_range = 0;
-	cfg.sine_power = 0;
-#else
+#ifdef COMP_MAP
 	cfg.brushed = !!cfg.brushed;
 	cfg.timing = clamp(cfg.timing, 1, 31);
 	cfg.sine_range = cfg.sine_range && cfg.damp && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
+#else
+	cfg.brushed = 0;
+	cfg.timing = 0;
+	cfg.sine_range = 0;
+	cfg.sine_power = 0;
 #endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
 	cfg.freq_max = clamp(cfg.freq_max, cfg.freq_min, 96);
