@@ -25,11 +25,16 @@
 #define SENS_CHAN 0x6
 #endif
 
+#ifndef TEMP_CHAN
+#define TEMP_CHAN 0x10 // CH16 (temp)
+#define TEMP_FUNC(x) ((1450 - (x)) * 40 / 43 + 100)
+#endif
+
 #define ADC1_BASE ADC_BASE
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
 static char len, ain;
-static uint16_t buf[5];
+static uint16_t buf[6];
 
 void init(void) {
 	RCC_APB2RSTR = -1;
@@ -61,9 +66,8 @@ void init(void) {
 	RCC_APB2ENR |= RCC_APB2ENR_TIM15EN;
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
-#endif
-
 	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
+#endif
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
 	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
@@ -79,6 +83,13 @@ void init(void) {
 	nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ);
+
+	TIM1_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE | TIM_DIER_CC4IE; // Software comparator blanking, ADC trigger
+	TIM1_SMCR = TIM_SMCR_TS_ITR2; // TRGI=TIM3
+	TIM3_CR2 = TIM_CR2_MMS_COMPARE_OC3REF; // TRGO=OC3REF
+	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1;
+	TIM3_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2; // Inverted PWM on OC3
+	TIM3_CCER = TIM_CCER_CC1E; // IC1 on rising edge on TI1 (COMP_OUT)
 
 	RCC_CR2 |= RCC_CR2_HSI14ON; // Enable IRC28M
 	while (!(RCC_CR2 & RCC_CR2_HSI14RDY));
@@ -98,18 +109,11 @@ void init(void) {
 		ADC1_SQR3 |= AIN_CHAN << (len++ * 5);
 		ain = 1;
 	}
-	ADC1_SQR3 |= 0x230 << (len * 5); // CH17 (vref), CH16 (temp)
+	ADC1_SQR3 |= (TEMP_CHAN | 0x220) << (len * 5); // CH17 (vref)
 	len += 2;
 	ADC1_SQR1 = (len - 1) << ADC_SQR1_L_LSB;
 	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
 	DMA1_CMAR(1) = (uint32_t)buf;
-
-	TIM1_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE | TIM_DIER_CC4IE; // Software comparator blanking, ADC trigger
-	TIM1_SMCR = TIM_SMCR_TS_ITR2; // TRGI=TIM3
-	TIM3_CR2 = TIM_CR2_MMS_COMPARE_OC3REF; // TRGO=OC3REF
-	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1;
-	TIM3_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2; // Inverted PWM on OC3
-	TIM3_CCER = TIM_CCER_CC1E; // IC1 on rising edge on TI1 (COMP_OUT)
 }
 
 void compctl(int x) {
@@ -178,15 +182,17 @@ void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
 	ADC1_CR2 = ADC_CR2_ADON | ADC_CR2_TSVREFE;
-	int i = 0, v = 0, c = 0, x = 0;
-#if SENS_CNT == 2
+	int i = 0, u = 0, v = 0, c = 0, a = 0;
+#if SENS_CNT >= 2
 	c = buf[i++];
 #endif
-#if SENS_CNT > 0
+#if SENS_CNT >= 1
 	v = buf[i++];
 #endif
-	if (ain) x = buf[i++];
+#if SENS_CNT >= 3
+	u = buf[i++];
+#endif
+	if (ain) a = buf[i++];
 	int r = 4914000 / buf[i + 1];
-	int t = (1450 - (buf[i] * r >> 12)) * 40 / 43 + 100;
-	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
+	adcdata(TEMP_FUNC(buf[i] * r >> 12), u * r >> 12, v * r >> 12, c * r >> 12, a * r >> 12);
 }

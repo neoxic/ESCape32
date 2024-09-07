@@ -17,22 +17,165 @@
 
 #include "common.h"
 
+#ifndef HALL_MAP
+#elif HALL_MAP == 0xB358
+#define HALL_PORT B
+#define HALL_PIN1 3
+#define HALL_PIN2 5
+#define HALL_PIN3 8
+#endif
+
+#ifndef BEC_MAP
+#elif BEC_MAP == 0xB35
+#define BEC_PORT B
+#define BEC_PIN1 3
+#define BEC_PIN2 5
+#elif BEC_MAP == 0xCEF
+#define BEC_PORT C
+#define BEC_PIN1 14
+#define BEC_PIN2 15
+#endif
+
+#if LED_MAP == 0xAF
+#define LED1_PORT A
+#define LED1_PIN 15
+#elif LED_MAP == 0xB8
+#define LED1_PORT B
+#define LED1_PIN 8
+#elif LED_MAP == 0xAFB3B4
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT B
+#define LED3_PIN 4
+#elif LED_MAP == 0xAFB5B3
+#define LED1_PORT A
+#define LED1_PIN 15
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP == 0xB5B3AF
+#define LED1_PORT B
+#define LED1_PIN 5
+#define LED2_PORT B
+#define LED2_PIN 3
+#define LED3_PORT A
+#define LED3_PIN 15
+#elif LED_MAP == 0xB5B4B3
+#define LED1_PORT B
+#define LED1_PIN 5
+#define LED2_PORT B
+#define LED2_PIN 4
+#define LED3_PORT B
+#define LED3_PIN 3
+#elif LED_MAP == 0xB8B5B3
+#define LED1_PORT B
+#define LED1_PIN 8
+#define LED2_PORT B
+#define LED2_PIN 5
+#define LED3_PORT B
+#define LED3_PIN 3
+#endif
+
+#ifdef LED_INV
+#define LED1_INV
+#define LED2_INV
+#define LED3_INV
+#endif
+
+#define GPIO(port, name) _GPIO(port, name)
+#define _GPIO(port, name) __GPIO(port, name)
+#define __GPIO(port, name) GPIO##port##_##name
+
 #ifdef STM32G4
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
 
-void initbec(void) {
+void initgpio(void) {
+#ifdef HALL_MAP
+	GPIO(HALL_PORT, PUPDR) |= (1 << HALL_PIN1 * 2) | (1 << HALL_PIN2 * 2) | (1 << HALL_PIN3 * 2);
+	GPIO(HALL_PORT, MODER) &= ~((3 << HALL_PIN1 * 2) | (3 << HALL_PIN2 * 2) | (3 << HALL_PIN3 * 2));
+#endif
 #ifdef BEC_MAP
 	int x = cfg.bec;
-#if BEC_MAP == 0xB3B5
-	GPIOB_ODR |= (x & 1) << 3 | (x & 2) << 4;
-	GPIOB_MODER &= ~0x880; // B3,B5 (output)
-#else // Use SWD pads
-	if (GPIOA_IDR & 0x6000) return; // Active or not connected
+#if BEC_MAP == 0xADE // SWD pins
+	if (GPIOA_IDR & 0x6000) return; // SWD is active or BEC is not connected
 	GPIOA_ODR |= x << 13;
 	GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
 	GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
 	GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
+#else
+	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) << (BEC_PIN2 - 1);
+	GPIO(BEC_PORT, MODER) &= ~((2 << BEC_PIN1 * 2) | (2 << BEC_PIN2 * 2));
+#endif
+#endif
+}
+
+__attribute__((__weak__))
+void initled(void) {
+#ifdef LED1_PORT
+#ifdef LED1_INV
+	GPIO(LED1_PORT, ODR) |= 1 << LED1_PIN;
+#endif
+	GPIO(LED1_PORT, MODER) &= ~(2 << LED1_PIN * 2);
+#endif
+#ifdef LED2_PORT
+#ifdef LED2_INV
+	GPIO(LED2_PORT, ODR) |= 1 << LED2_PIN;
+#endif
+	GPIO(LED2_PORT, MODER) &= ~(2 << LED2_PIN * 2);
+#endif
+#ifdef LED3_PORT
+#ifdef LED3_INV
+	GPIO(LED3_PORT, ODR) |= 1 << LED3_PIN;
+#endif
+	GPIO(LED3_PORT, MODER) &= ~(2 << LED3_PIN * 2);
+#endif
+#ifdef LED4_PORT
+#ifdef LED4_INV
+	GPIO(LED4_PORT, ODR) |= 1 << LED4_PIN;
+#endif
+	GPIO(LED4_PORT, MODER) &= ~(2 << LED4_PIN * 2);
+#endif
+}
+
+#ifdef HALL_MAP
+int hallcode(void) {
+	int x = GPIO(HALL_PORT, IDR);
+	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) >> (HALL_PIN2 - 1) | (x & (1 << HALL_PIN3)) >> (HALL_PIN3 - 2);
+}
+#endif
+
+__attribute__((__weak__))
+void ledctl(int x) {
+#ifdef LED1_PORT
+#ifdef LED1_INV
+	GPIO(LED1_PORT, BSRR) = x & 1 ? 1 << (LED1_PIN + 16) : 1 << LED1_PIN;
+#else
+	GPIO(LED1_PORT, BSRR) = x & 1 ? 1 << LED1_PIN : 1 << (LED1_PIN + 16);
+#endif
+#endif
+#ifdef LED2_PORT
+#ifdef LED2_INV
+	GPIO(LED2_PORT, BSRR) = x & 2 ? 1 << (LED2_PIN + 16) : 1 << LED2_PIN;
+#else
+	GPIO(LED2_PORT, BSRR) = x & 2 ? 1 << LED2_PIN : 1 << (LED2_PIN + 16);
+#endif
+#endif
+#ifdef LED3_PORT
+#ifdef LED3_INV
+	GPIO(LED3_PORT, BSRR) = x & 4 ? 1 << (LED3_PIN + 16) : 1 << LED3_PIN;
+#else
+	GPIO(LED3_PORT, BSRR) = x & 4 ? 1 << LED3_PIN : 1 << (LED3_PIN + 16);
+#endif
+#endif
+#ifdef LED4_PORT
+#ifdef LED4_INV
+	GPIO(LED4_PORT, BSRR) = x & 8 ? 1 << (LED4_PIN + 16) : 1 << LED4_PIN;
+#else
+	GPIO(LED4_PORT, BSRR) = x & 8 ? 1 << LED4_PIN : 1 << (LED4_PIN + 16);
 #endif
 #endif
 }
@@ -121,14 +264,14 @@ int calcpid(PID *pid, int x, int y) {
 }
 
 void checkcfg(void) {
-#ifdef ANALOG
-	cfg.arm = 0;
-#else
+#ifndef ANALOG
 #ifndef ANALOG_CHAN
 	if (IO_ANALOG) cfg.arm = 1; // Ensure low level on startup
 	else
 #endif
 	cfg.arm = !!cfg.arm;
+#else
+	cfg.arm = 0;
 #endif
 #ifdef PWM_ENABLE
 	cfg.damp = 1;
@@ -136,17 +279,10 @@ void checkcfg(void) {
 	cfg.damp = !!cfg.damp;
 #endif
 	cfg.revdir = !!cfg.revdir;
-#ifdef COMP_MAP
 	cfg.brushed = !!cfg.brushed;
 	cfg.timing = clamp(cfg.timing, 1, 31);
 	cfg.sine_range = cfg.sine_range && cfg.damp && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
-#else
-	cfg.brushed = 0;
-	cfg.timing = 0;
-	cfg.sine_range = 0;
-	cfg.sine_power = 0;
-#endif
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
 	cfg.freq_max = clamp(cfg.freq_max, cfg.freq_min, 96);
 	cfg.duty_min = clamp(cfg.duty_min, 1, 100);
@@ -155,7 +291,8 @@ void checkcfg(void) {
 	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 100);
 	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
-	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : 2);
+	cfg.duty_lock = cfg.duty_lock && cfg.damp && !cfg.brushed;
+	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : cfg.duty_lock ? 1 : 3);
 	cfg.throt_set = clamp(cfg.throt_set, 0, cfg.arm ? 0 : 100);
 	cfg.throt_cal = !!cfg.throt_cal;
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
@@ -176,20 +313,27 @@ void checkcfg(void) {
 #endif
 	cfg.telem_mode = clamp(cfg.telem_mode, 0, 4);
 	cfg.telem_phid =
-		cfg.telem_mode == 2 ? clamp(cfg.telem_phid, 1, 3):
+		cfg.telem_mode == 2 ? clamp(cfg.telem_phid, 1, 2):
 		cfg.telem_mode == 3 ? clamp(cfg.telem_phid, 1, 28):
 		cfg.input_mode == 4 ? clamp(cfg.telem_phid, 0, 4) : 0;
 	cfg.telem_poles = clamp(cfg.telem_poles & ~1, 2, 100);
-	cfg.prot_stall = cfg.prot_stall && !cfg.brushed ? clamp(cfg.prot_stall, 1800, 3200) : 0;
+	cfg.prot_stall = cfg.prot_stall && !cfg.brushed ? clamp(cfg.prot_stall, 1500, 3500) : 0;
 	cfg.prot_temp = cfg.prot_temp ? clamp(cfg.prot_temp, 60, 140) : 0;
-#if VOLT_MUL > 0
+#if SENS_CNT >= 3
+	cfg.prot_sens = clamp(cfg.prot_sens, 0, 2);
+#else
+	cfg.prot_sens = 0;
+#endif
+#if SENS_CNT >= 1 && VOLT_MUL > 0
 	cfg.prot_volt = cfg.prot_volt ? clamp(cfg.prot_volt, 28, 38) : 0;
-	cfg.prot_cells = clamp(cfg.prot_cells, 0, 16);
+	cfg.prot_cells = clamp(cfg.prot_cells, 0, 24);
 #else
 	cfg.prot_volt = 0;
 	cfg.prot_cells = 0;
 #endif
-#if CURR_MUL == 0
+#if SENS_CNT >= 2 && CURR_MUL > 0
+	cfg.prot_curr = clamp(cfg.prot_curr, 0, 500);
+#else
 	cfg.prot_curr = 0;
 #endif
 	cfg.volume = clamp(cfg.volume, 0, 100);
@@ -284,7 +428,7 @@ int playmusic(const char *str, int vol) {
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
-	TIM1_PSC = CLK_MHZ / 8 - 1; // 8MHz
+	TIM1_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
 	for (int a, b, c = 0; (a = *str++);) {
 		if (a >= 'a' && a <= 'g') a -= 'c', b = 0; // Low note
 		else if (a >= 'A' && a <= 'G') a -= 'C', b = 1; // High note

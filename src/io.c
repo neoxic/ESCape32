@@ -143,7 +143,7 @@ static void entryirq(void) {
 				USART2_CR2 |= USART_CR2_RXINV | USART_CR2_TXINV;
 				GPIOA_PUPDR = (GPIOA_PUPDR & ~0x30) | 0x20; // A2 (pull-down)
 #endif
-				TIM15_PSC = CLK_MHZ / 8 - 1; // 8MHz
+				TIM15_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
 				TIM15_ARR = -1;
 				TIM15_EGR = TIM_EGR_UG;
 				TIM15_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
@@ -467,15 +467,11 @@ static void dshotdma(void) {
 			cfg.duty_ramp = x * 10;
 			beepval = x;
 			break;
-		case 43: // Increase duty cycle slew rate
+		case 43: // Select duty cycle slew rate
 			if (cnt != 6) break;
-			if ((x = cfg.duty_rate) < 100 && ++x > 10) x = (x + 4) / 5 * 5;
-			beepval = cfg.duty_rate = x;
-			break;
-		case 44: // Decrease duty cycle slew rate
-			if (cnt != 6) break;
-			if ((x = cfg.duty_rate) > 1 && --x > 10) x = x / 5 * 5;
-			beepval = cfg.duty_rate = x;
+			if ((x = cfg.duty_rate / 10 + 1) > 10) x = 1;
+			cfg.duty_rate = x * 10;
+			beepval = x;
 			break;
 		case 47: // Reset settings
 			if (cnt != 6) break;
@@ -545,7 +541,7 @@ static int serialreq(char a, int x) {
 			throt = x;
 			break;
 		case 0x2: // Reversed motor direction
-			cfg.revdir = !!x;
+			flipdir = !!x;
 			break;
 		case 0x3: // Drag brake amount
 			cfg.duty_drag = min(x, 100);
@@ -558,22 +554,24 @@ static int serialreq(char a, int x) {
 	}
 	switch (a >> 4) {
 		case 0x8: // Combined telemetry
-			iobuf[0] = temp;
-			iobuf[1] = volt;
-			iobuf[2] = volt >> 8;
-			iobuf[3] = curr;
-			iobuf[4] = curr >> 8;
-			iobuf[5] = csum;
-			iobuf[6] = csum >> 8;
-			iobuf[7] = x = min(ertm, 0xffff);
-			iobuf[8] = x >> 8;
-			iobuf[9] = crc8(iobuf, 9);
+			iobuf[0] = temp1;
+			iobuf[1] = temp2;
+			iobuf[2] = volt;
+			iobuf[3] = volt >> 8;
+			iobuf[4] = curr;
+			iobuf[5] = curr >> 8;
+			iobuf[6] = csum;
+			iobuf[7] = csum >> 8;
+			iobuf[8] = x = min(ertm, 0xffff);
+			iobuf[9] = x >> 8;
+			iobuf[10] = crc8(iobuf, 10);
 			return 10;
 		case 0x9: return serialresp(min(ertm, 0xffff)); // Electrical revolution time (us)
-		case 0xa: return serialresp(temp); // Temperature (C)
-		case 0xb: return serialresp(volt); // Voltage (V/100)
-		case 0xc: return serialresp(curr); // Current (A/100)
-		case 0xd: return serialresp(csum); // Consumption (mAh)
+		case 0xa: return serialresp(temp1); // ESC temperature (C)
+		case 0xb: return serialresp(temp2); // Motor temperature (C)
+		case 0xc: return serialresp(volt); // Voltage (V/100)
+		case 0xd: return serialresp(curr); // Current (A/100)
+		case 0xe: return serialresp(csum); // Consumption (mAh)
 	}
 	return 0;
 }
@@ -646,22 +644,22 @@ static void sbusrx(void) {
 
 static void sbustx(void) {
 	static const char slot[] = {
-		0xc3, 0x23, 0xa3, 0x63, 0xe3, // 3..7
-		0xd3, 0x33, 0xb3, 0x73, 0xf3, // 11..15
-		0xcb, 0x2b, 0xab, 0x6b, 0xeb, // 19..23
-		0xdb, 0x3b, 0xbb, 0x7b, 0xfb, // 27..31
+		0x43, 0xc3, 0x23, 0xa3, 0x63, 0xe3, // 2..7
+		0x53, 0xd3, 0x33, 0xb3, 0x73, 0xf3, // 10..15
+		0x4b, 0xcb, 0x2b, 0xab, 0x6b, 0xeb, // 18..23
+		0x5b, 0xdb, 0x3b, 0xbb, 0x7b, 0xfb, // 26..31
 	};
 	static int n;
 	int a = 0, b = 0;
 	TIM15_SR = ~TIM_SR_UIF;
 	switch (n) {
-		case 0: // SBS-01T (temperature)
-			a = temp + 100;
+		case 0: // SBS-01T (ESC temperature)
+			a = temp1 + 100;
 			b = a >> 8 | 0x80;
 			break;
-		case 1: // SBS-01R (RPM)
-			a = min(erpm / (cfg.telem_poles * 3), 0xffff);
-			b = a >> 8;
+		case 1: // SBS-01T (motor temperature)
+			a = temp2 + 100;
+			b = a >> 8 | 0x80;
 			break;
 		case 2: // SBS-01C (current)
 			b = curr;
@@ -675,14 +673,18 @@ static void sbustx(void) {
 			b = csum;
 			a = b >> 8;
 			break;
+		case 5: // SBS-01R (RPM)
+			a = min(erpm / (cfg.telem_poles * 3), 0xffff);
+			b = a >> 8;
+			break;
 	}
-	iobuf[0] = slot[n + (cfg.telem_phid - 1) * 5];
+	iobuf[0] = slot[n + (cfg.telem_phid - 1) * 6];
 	iobuf[1] = a;
 	iobuf[2] = b;
 	DMA1_CCR(USART2_TX_DMA) = 0;
 	DMA1_CNDTR(USART2_TX_DMA) = 3;
 	DMA1_CCR(USART2_TX_DMA) = DMA_CCR_EN | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
-	if (++n < 5) return;
+	if (++n < 6) return;
 	ioirq = sbusrx;
 	n = 0;
 }

@@ -29,13 +29,18 @@
 #endif
 #include <libopencm3/stm32/flash.h>
 #include <libopencm3/stm32/crc.h>
+#include <libopencm3/stm32/dbgmcu.h>
 #include "config.h"
 
 #define CLK_CNT(rate) ((CLK + ((rate) >> 1)) / (rate))
 
-#ifdef IO_PA6
+#ifdef IO_PA2
+#define IO_PIN 1
+#elif defined IO_PA6
+#define IO_PIN 2
 #define TIM3_IDR (GPIOA_IDR & 0x40) // A6
 #else
+#define IO_PIN 3
 #define TIM3_IDR (GPIOB_IDR & 0x10) // B4
 #endif
 

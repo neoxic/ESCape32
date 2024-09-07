@@ -17,13 +17,14 @@
 
 #include "common.h"
 
-#define REVISION 11
+#define REVISION 12
+#define REVPATCH 0
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
 	.revision = REVISION,
-	.target_type = IO_TYPE | SENS_CNT << 2,
-	.target_name = TARGET_NAME,
+	.revpatch = REVPATCH,
+	.name = TARGET_NAME,
 	.arm = ARM,                 // Wait for 250ms zero throttle on startup
 	.damp = DAMP,               // Complementary PWM (active freewheeling)
 	.revdir = REVDIR,           // Reversed motor direction
@@ -39,7 +40,8 @@ const Cfg cfgdata = {
 	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
 	.duty_rate = DUTY_RATE,     // Duty cycle slew rate (0.1%/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
-	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse)
+	.duty_lock = DUTY_LOCK,     // Active drag brake (motor lock)
+	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse, 3 - forward/brake)
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
 	.throt_cal = THROT_CAL,     // Automatic throttle calibration
 	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
@@ -50,13 +52,14 @@ const Cfg cfgdata = {
 	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
 	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
-	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..3 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
+	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..2 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
 	.prot_stall = PROT_STALL,   // Stall protection (ERPM) [0 - off, 1800..3200]
 	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
+	.prot_sens = PROT_SENS,     // Temperature sensor (0 - ESC, 1 - motor, 2 - both)
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
-	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..16]
-	.prot_curr = PROT_CURR,     // Maximum current (A) [0..255]
+	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..24]
+	.prot_curr = PROT_CURR,     // Maximum current (A) [0..500]
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
@@ -67,23 +70,26 @@ const Cfg cfgdata = {
 __attribute__((__section__(".cfg")))
 Cfg cfg = cfgdata;
 
-int throt, ertm, erpm, temp, volt, curr, csum, dshotval, beepval = -1;
+int throt, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext;
 
-static int step, sine, sync, ival, tval;
-static char prep, fast, tick, reverse, ready, brushed;
+static int oldstep, step, sine, sync, ival, cutback, led;
+static char prep, fast, lock, tick, ready, reverse, sensored;
 static uint32_t tickms, tickmsv;
 static volatile char tickmsf;
+#ifdef HALL_MAP
+static int hint = 0x10000;
+#endif
 
 static void reset(void) {
-	__disable_irq();
+	ledctl(1); // Indicate error
 	TIM1_EGR = TIM_EGR_BG;
-	TIM_PSC(GPTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
-	TIM_ARR(GPTIM) = 9999;
-	TIM_EGR(GPTIM) = TIM_EGR_UG;
-	TIM_SR(GPTIM) = ~TIM_SR_UIF;
-	TIM_CR1(GPTIM) = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM_CR1(GPTIM) & TIM_CR1_CEN); // Wait for 1s
+	TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
+	TIM_ARR(XTIM) = 9999;
+	TIM_EGR(XTIM) = TIM_EGR_UG;
+	TIM_SR(XTIM) = ~TIM_SR_UIF;
+	TIM_CR1(XTIM) = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM_CR1(XTIM) & TIM_CR1_CEN); // Wait for 1s
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
 }
@@ -100,47 +106,6 @@ static void reset(void) {
 */
 
 static void nextstep(void) {
-#ifdef COMP_MAP
-	if (brushed) {
-		int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
-		int m2 = TIM_CCMR2_OC3PE;
-#ifdef PWM_ENABLE
-		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
-		if (reverse) {
-			m1 |= TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_PWM1;
-			m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
-		} else {
-			m1 |= TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
-			m2 |= TIM_CCMR2_OC3M_PWM1;
-		}
-#else
-		int er = 0;
-		if (reverse) {
-			m1 |= TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_PWM1;
-			m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
-			er |= TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC3NE;
-			if (cfg.damp) er |= TIM_CCER_CC2NE;
-		} else {
-			m1 |= TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_HIGH;
-			m2 |= TIM_CCMR2_OC3M_PWM1;
-			er |= TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
-			if (cfg.damp) er |= TIM_CCER_CC1NE | TIM_CCER_CC3NE;
-		}
-#endif
-#ifdef INVERTED_HIGH
-		er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-		er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
-#endif
-		TIM1_CCMR1 = m1;
-		TIM1_CCMR2 = m2;
-		TIM1_CCER = er;
-		step = 1;
-		sync = 1;
-		ertm = 60000000;
-		return;
-	}
 	if (sine) { // Sine startup
 		TIM_ARR(IFTIM) = IFTIM_OCR = sine;
 		TIM_EGR(IFTIM) = TIM_EGR_UG;
@@ -153,11 +118,7 @@ static void nextstep(void) {
 		int a = step - 1;
 		int b = a < 120 ? a + 240 : a - 120;
 		int c = a < 240 ? a + 120 : a - 240;
-		int p = cfg.sine_power << 3;
-		if (cfg.prot_temp) { // Temperature threshold
-			int q = max(120 - (tval - (cfg.prot_temp << 2)), 60); // 50% power reduction at 15C above threshold
-			if (p > q) p = q;
-		}
+		int p = min(cfg.sine_power << 3, 120 - cutback); // 50% cutback at 15C above prot_temp
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = CLK_KHZ / 24 - 1;
 		TIM1_CCR1 = DEAD_TIME + (sinedata[a] * p >> 7);
@@ -186,12 +147,20 @@ static void nextstep(void) {
 		prep = 1;
 		return;
 	}
-#else
+#ifdef HALL_MAP
 	static const char map[][2] = {{2, 4}, {4, 6}, {3, 5}, {6, 2}, {1, 3}, {5, 1}}; // Hall sensor code mapping
-	if (ertm > 2000) {
-		int code = IFTIM_IDR;
-		if (code < 1 || code > 6) reset(); // Invalid Hall sensor code
-		step = map[code - 1][!!reverse];
+	if (sensored && hint > 20000) {
+		int x = -1;
+		for (int i = 0, j = 0; j < 4; ++j) {
+			int y = hallcode();
+			if (x == y) continue;
+			if (++i == 20) reset(); // Unstable signal
+			x = y;
+			j = 0;
+		}
+		if (x < 1 || x > 6) reset(); // Invalid Hall sensor code
+		step = map[x - 1][!!reverse];
+		ival = (ival + (hint >> (2 - IFTIM_XRES))) >> 1;
 	} else
 #endif
 	if (reverse) {
@@ -200,7 +169,7 @@ static void nextstep(void) {
 		if (++step > 6) step = 1;
 	}
 	static const char seq[] = {0x35, 0x19, 0x2b, 0x32, 0x1e, 0x2c}; // Commutation sequence
-	static int buf[6];
+	static int pcc, val, cnt, buf[6];
 	int x = seq[step - 1];
 	int m = x >> 3; // Energized phase mask
 	int p = x & m; // Positive phase
@@ -213,9 +182,7 @@ static void nextstep(void) {
 	int m2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_PWM1;
 	int er = TIM_CCER_CC4E;
 #endif
-#ifdef COMP_MAP
 	int cc = (step & 1) ^ reverse ? 4 : 0; // BEMF rising/falling
-#endif
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
 #ifdef PWM_ENABLE
@@ -237,9 +204,7 @@ static void nextstep(void) {
 		m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC1NE;
-#ifdef COMP_MAP
 		cc |= 1;
-#endif
 	}
 	if (p & 2) {
 		m1 |= TIM_CCMR1_OC2M_PWM1;
@@ -262,9 +227,7 @@ static void nextstep(void) {
 		m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC2NE;
-#ifdef COMP_MAP
 		cc |= 2;
-#endif
 	}
 	if (p & 4) {
 		m2 |= TIM_CCMR2_OC3M_PWM1;
@@ -287,9 +250,7 @@ static void nextstep(void) {
 		m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC3NE;
-#ifdef COMP_MAP
 		cc |= 3;
-#endif
 	}
 #ifdef INVERTED_HIGH
 	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
@@ -300,10 +261,6 @@ static void nextstep(void) {
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
 	TIM1_CCER = er;
-	buf[step - 1] = ival;
-	if (sync == 6) ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
-#ifdef COMP_MAP
-	static int pcc, val, cnt;
 	compctl(pcc);
 	pcc = cc;
 	if (ival > 1000 << IFTIM_XRES) {
@@ -362,7 +319,9 @@ static void nextstep(void) {
 	}
 	TIM_SR(IFTIM) = 0; // Clear BEMF events before enabling interrupts
 	TIM_DIER(IFTIM) = TIM_DIER_UIE | IFTIM_ICIE;
-#endif
+	buf[step - 1] = ival;
+	if (sync < 6) return;
+	ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
 }
 
 static void laststep(void) {
@@ -381,18 +340,27 @@ static void laststep(void) {
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
-	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
-#ifdef PWM_ENABLE
-	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM2;
-	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2;
-#else
-	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
-	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
-#endif
 	TIM1_EGR = TIM_EGR_COMG;
-#ifdef COMP_MAP
-	compctl(0);
+	if (sine && prep) { // Switch over to 6-step
+		step = (step + 29) / 60 + 1;
+		if (step > 6) step = 1;
+	}
+	sine = 0;
+	prep = 0;
+	if (lock) nextstep(); // Active drag brake
+	else { // Passive drag brake
+#ifdef PWM_ENABLE
+		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM2;
+		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2;
+#else
+		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
+		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
 #endif
+	}
+	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
+	compctl(0);
+	oldstep = step;
+	step = 0;
 }
 
 void tim1_com_isr(void) {
@@ -417,7 +385,6 @@ void tim1_com_isr(void) {
 	nextstep();
 }
 
-#ifdef COMP_MAP
 void iftim_isr(void) { // BEMF zero-crossing
 	int er = TIM_DIER(IFTIM);
 	int sr = TIM_SR(IFTIM);
@@ -441,35 +408,51 @@ void iftim_isr(void) { // BEMF zero-crossing
 	TIM_DIER(IFTIM) = 0;
 	if (sync < 6) ++sync;
 }
-#else
-void iftim_isr(void) { // Any change on Hall sensor inputs
-	int er = TIM_DIER(IFTIM);
-	int sr = TIM_SR(IFTIM);
-	if ((er & TIM_DIER_UIE) && (sr & TIM_SR_UIF)) { // Timeout
-		TIM_SR(IFTIM) = ~TIM_SR_UIF;
+
+#ifdef HALL_MAP
+void tim3_isr(void) { // Any change on Hall sensor inputs
+	if (TIM3_SR & TIM_SR_UIF) { // Timeout
+		TIM3_SR = ~TIM_SR_UIF;
+		hint = 0x10000;
+		if (!step) return;
 		sync = 0;
-		ival = 1 << (IFTIM_XRES + 16);
+		fast = 0;
+		ival = 10000 << IFTIM_XRES;
 		ertm = 100000000;
 		return;
 	}
-	if (!(er & TIM_DIER_CC1IE)) return;
-	ival = (ival * 3 + TIM_CCR1(IFTIM)) >> 2;
-	if (sync < 6) ++sync;
+	hint = (TIM3_CCR1 + hint * 3) >> 2;
 }
 #endif
 
-void adcdata(int t, int v, int c, int x) {
-	static int z = 3300, st = -1, sv = -1, sc = -1, sx = -1;
+void adcdata(int t, int u, int v, int c, int a) {
+	static int z = 3300, st = -1, su = -1, sv = -1, sc = -1, sa = -1;
 	if ((c -= z) >= 0) ready = 1;
 	else {
 		if (!ready) z += c >> 1;
 		c = 0;
 	}
-	temp = max((tval = smooth(&st, t, 10)) >> 2, 0); // C
+	temp1 = max((t = smooth(&st, t, 10)) >> 2, 0); // C
+	temp2 = max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0); // C
 	volt = smooth(&sv, v * VOLT_MUL / 1000, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
+	if (cfg.prot_temp) { // Temperature protection
+		int x = -(cfg.prot_temp << 2);
+		switch (cfg.prot_sens) {
+			case 0:
+				x += t;
+				break;
+			case 1:
+				x += u;
+				break;
+			case 2:
+				x += max(t, u);
+				break;
+		}
+		cutback = clamp(x, 0, 60);
+	}
 	if (!analog) return;
-	throt = scale(smooth(&sx, x, 5), cfg.analog_min, cfg.analog_max, cfg.throt_set * 20, 2000);
+	throt = scale(smooth(&sa, a, 5), cfg.analog_min, cfg.analog_max, cfg.throt_set * 20, 2000);
 }
 
 void sys_tick_handler(void) {
@@ -484,12 +467,11 @@ void delay(int ms) {
 	tickmsv = tickms + ms;
 	tickmsf = 1;
 	__enable_irq();
-	while (tickmsf) TIM_EGR(GPTIM) = TIM_EGR_UG; // Reset arming timeout
+	while (tickmsf) TIM_EGR(XTIM) = TIM_EGR_UG; // Reset arming timeout
 }
 
 void pend_sv_handler(void) {
-	static char led = -1;
-	static int i, n, q;
+	static int i, n, q, a = -1;
 	if (telreq && !telmode) { // Telemetry request
 		kisstelem();
 		telreq = 0;
@@ -497,7 +479,8 @@ void pend_sv_handler(void) {
 	if (tick & 15) return; // 16kHz -> 1kHz
 	adctrig();
 	if (!(tickms & 31)) autotelem(); // Telemetry every 32ms
-	if (led != cfg.led) ledctl(led = cfg.led); // Update LEDs
+	int b = cfg.led ? cfg.led : led;
+	if (a != b) ledctl(a = b); // Update LED
 	i += curr;
 	if (++n < 1000) return; // 1ms -> 1s
 	csum = (q += i / 1000) / 360; // mAh
@@ -525,14 +508,16 @@ static void beep(void) {
 void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
+	const int brushed = cfg.brushed;
+	const int mode = cfg.throt_mode;
+	lock = cfg.duty_lock;
 	throt = cfg.throt_set * 20;
+	telmode = cfg.telem_mode;
 #if defined ANALOG || defined ANALOG_CHAN
 	analog = IO_ANALOG;
 #endif
-	brushed = cfg.brushed;
-	telmode = cfg.telem_mode;
 	init();
-	initbec();
+	initgpio();
 	initled();
 	inittelem();
 #ifndef ANALOG
@@ -551,6 +536,19 @@ void main(void) {
 	TIM_CR1(IFTIM) = TIM_CR1_URS;
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+#ifdef HALL_MAP
+	if ((sensored = hallcode() != 7)) {
+		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
+		TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+		TIM3_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
+		TIM3_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE;
+		TIM3_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
+		TIM3_ARR = -1;
+		TIM3_CR1 = TIM_CR1_URS;
+		TIM3_EGR = TIM_EGR_UG;
+		TIM3_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+	}
+#endif
 	nvic_set_priority(NVIC_PENDSV_IRQ, 0x80);
 	STK_RVR = CLK_KHZ / 16 - 1; // 16kHz
 	STK_CVR = 0;
@@ -565,82 +563,90 @@ void main(void) {
 	RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
 	if (!(csr & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
 		playmusic(cfg.music, cfg.volume);
-		if (cfg.prot_volt) for (int i = 0; i < cells; ++i) playmusic("_2D", cfg.volume); // Number of battery cells
+		if (cfg.prot_volt) { // Report the number of battery cells
+			beepval = cells;
+			delay(250);
+			beep();
+		}
 	}
 	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
-		TIM_PSC(GPTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
-		TIM_ARR(GPTIM) = 2499; // 250ms
-		TIM_CR1(GPTIM) = TIM_CR1_URS;
-		TIM_EGR(GPTIM) = TIM_EGR_UG;
-		TIM_CR1(GPTIM) = TIM_CR1_CEN | TIM_CR1_URS;
-		TIM_SR(GPTIM) = ~TIM_SR_UIF;
+		TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
+		TIM_ARR(XTIM) = 2499; // 250ms
+		TIM_CR1(XTIM) = TIM_CR1_URS;
+		TIM_EGR(XTIM) = TIM_EGR_UG;
+		TIM_CR1(XTIM) = TIM_CR1_CEN | TIM_CR1_URS;
+		TIM_SR(XTIM) = ~TIM_SR_UIF;
 		throt = 1;
-		while (!(TIM_SR(GPTIM) & TIM_SR_UIF)) { // Wait for 250ms zero throttle
+		while (!(TIM_SR(XTIM) & TIM_SR_UIF)) { // Wait for 250ms zero throttle
 			__WFI();
 			beep();
 			if (!throt) continue;
-			TIM_EGR(GPTIM) = TIM_EGR_UG;
+			TIM_EGR(XTIM) = TIM_EGR_UG;
 		}
 		throt = 0;
-		TIM_CR1(GPTIM) = 0;
-		playmusic("GC", cfg.volume);
+		TIM_CR1(XTIM) = 0;
+		playmusic(sensored ? "G_GC" : "GC", cfg.volume);
 	}
 #endif
 	laststep();
 	PID bpid = {.Kp = 50, .Ki = 0, .Kd = 1000}; // Stall protection
 	PID cpid = {.Kp = 400, .Ki = 0, .Kd = 600}; // Overcurrent protection
-	for (int curduty = 0, running = 0, braking = 2, boost = 0, choke = 0, r = 0, v = 0;;) {
+	for (int curduty = 0, running = 0, braking = 2, cutoff = 0, boost = 0, choke = 0, n = 0;;) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		__WFI();
+		int ccr, arr = CLK_KHZ / cfg.freq_min;
 		int input = throt;
 		int range = cfg.sine_range * 20;
-		int hyst = range && sine ? 20 : 0;
+		int delta = range ? 10 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
 		if (input > 0) { // Forward
-			if (range + hyst < input) newduty = scale(input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
+			if (range + (sine ? delta : -delta) < input) newduty = scale(input, range + delta, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+			else sine = scale(input, 0, range - delta, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 			reverse = cfg.revdir ^ flipdir;
 			running = 1;
 			braking = 0;
 		} else if (input < 0) { // Reverse
-			if (cfg.throt_mode == 2 && braking != 2) { // Proportional brake
+			if ((mode == 2 && braking != 2) || mode == 3) { // Proportional brake
 				curduty = scale(-input, 0, 2000, cfg.duty_drag * 20, 2000);
 				running = 0;
 				braking = 1;
-			} else {
-				if (range + hyst < -input) newduty = scale(-input, range, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-				else sine = scale(-input, 0, range, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
-				reverse = !cfg.revdir ^ flipdir;
-				running = 1;
+				goto setduty;
 			}
+			if (range + (sine ? delta : -delta) < -input) newduty = scale(-input, range + delta, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+			else sine = scale(-input, 0, range - delta, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
+			reverse = !cfg.revdir ^ flipdir;
+			running = 1;
 		} else { // Neutral
-			if (sync == 6) boost = 0; // Coasting
-			else { // Drag brake
-				curduty = cfg.duty_drag * 20;
-				running = 0;
-			}
 			if (braking == 1) braking = 2; // Reverse after braking
+			if (sync < 6) { // Drag brake
+				curduty = lock ? min(cfg.duty_drag, 100 - cutback) : cfg.duty_drag * 20; // 60% cutback at 15C above prot_temp
+				running = 0;
+				goto setduty;
+			}
+			boost = 0; // Coasting
 		}
-#ifdef COMP_MAP
-		if (running && sine) { // Sine startup
+		if (sine) { // Sine startup
 			if (!newduty) {
-				if (!ertm) goto skip_duty;
+				if (!ertm) goto skipduty;
 				ertm = sine * (180 >> IFTIM_XRES);
 				erpm = 60000000 / ertm;
-				goto skip_duty;
+				goto skipduty;
 			}
 			__disable_irq();
-			int a = step - 1;
-			int b = a / 60;
-			int c = b * 60;
-			IFTIM_OCR = sine * (reverse ? c - a + 60 : a - c + 1); // Commutation delay
-			TIM_ARR(IFTIM) = (1 << (IFTIM_XRES + 16)) - 1;
-			TIM_EGR(IFTIM) = TIM_EGR_UG;
-			step = b + 1; // Switch over to 6-step
+			if (prep) { // Switch over to 6-step
+				int a = step - 1;
+				int b = a / 60;
+				int c = b * 60;
+				if (reverse && ++b == 6) b = 0;
+				IFTIM_OCR = sine * (reverse ? a - c + 1 : c - a + 60); // Commutation delay
+				TIM_ARR(IFTIM) = (1 << (IFTIM_XRES + 16)) - 1;
+				TIM_EGR(IFTIM) = TIM_EGR_UG;
+				step = b + 1;
+			}
 			sine = 0;
-			sync = 0;
 			prep = 0;
+			sync = 0;
 			fast = 0;
 			ival = 10000 << IFTIM_XRES;
 			nextstep();
@@ -649,31 +655,24 @@ void main(void) {
 			curduty = 0;
 			boost = 0;
 		}
-#endif
-		int arr = CLK_KHZ / cfg.freq_min;
-		if (running) {
-			if (ertm) {
-				erpm = 60000000 / ertm;
-				arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max); // Variable PWM frequency
-			}
-			int maxduty = scale(erpm, 0, cfg.duty_ramp * 1000, cfg.duty_spup * 20, 2000);
-			if (cfg.prot_temp) { // Temperature threshold
-				int q = max(2000 - (tval - (cfg.prot_temp << 2)) * 25, 500); // 75% power reduction at 15C above threshold
-				if (maxduty > q) maxduty = q;
-			}
-			newduty += boost;
-			if ((newduty -= choke) < 0) newduty = 0;
-			if (newduty > maxduty) newduty = maxduty;
-			int a = fast ? 0 : cfg.duty_rate;
-			int b = a >> 3;
-			if (r < (a & 7)) ++b;
-			if (++r == 8) r = 0;
-			if (curduty > newduty ? sync < 6 || (curduty -= b) < newduty : (curduty += b) > newduty) curduty = newduty; // Duty cycle slew rate limiting
+		if (brushed && step != reverse + 1) step = 0; // Change brushed direction
+		if ((newduty += boost - choke) < 0) newduty = 0;
+		if (ertm) { // Variable PWM frequency
+			erpm = 60000000 / ertm;
+			arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max);
 		}
+		int maxduty = min(scale(erpm, 0, cfg.duty_ramp * 1000, cfg.duty_spup * 20, 2000), 2000 - cutback * 25); // 75% cutback at 15C above prot_temp
+		if (newduty > maxduty) newduty = maxduty;
+		int a = fast ? 0 : cfg.duty_rate;
+		int b = a >> 3;
+		if (n < (a & 7)) ++b;
+		if (++n == 8) n = 0;
+		if (curduty > newduty ? sync < 6 || (curduty -= b) < newduty : (curduty += b) > newduty) curduty = newduty; // Duty cycle slew rate limiting
+	setduty:
 #ifdef FULL_DUTY // Allow 100% duty cycle
-		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, arr--);
+		ccr = scale(curduty, 0, 2000, lock || (running && cfg.damp) ? DEAD_TIME : 0, arr--);
 #else
-		int ccr = scale(curduty, 0, 2000, running && cfg.damp ? DEAD_TIME : 0, brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
+		ccr = scale(curduty, 0, 2000, lock || (running && cfg.damp) ? DEAD_TIME : 0, brushed ? arr - (CLK_MHZ * 3 >> 1) : arr);
 #endif
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = arr;
@@ -681,21 +680,56 @@ void main(void) {
 		TIM1_CCR2 = ccr;
 		TIM1_CCR3 = ccr;
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
-	skip_duty:
+	skipduty:
 		if (running && !step) { // Start motor
+			if (brushed) {
+				int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
+				int m2 = TIM_CCMR2_OC3PE;
+#ifdef PWM_ENABLE
+				int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+				if (reverse) {
+					m1 |= TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_PWM1;
+					m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
+				} else {
+					m1 |= TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
+					m2 |= TIM_CCMR2_OC3M_PWM1;
+				}
+#else
+				int er = 0;
+				if (reverse) {
+					m1 |= TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_PWM1;
+					m2 |= TIM_CCMR2_OC3M_FORCE_HIGH;
+					er |= TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC3NE;
+					if (cfg.damp) er |= TIM_CCER_CC2NE;
+				} else {
+					m1 |= TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_HIGH;
+					m2 |= TIM_CCMR2_OC3M_PWM1;
+					er |= TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
+					if (cfg.damp) er |= TIM_CCER_CC1NE | TIM_CCER_CC3NE;
+				}
+#endif
+#ifdef INVERTED_HIGH
+				er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+				er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+				TIM1_CCMR1 = m1;
+				TIM1_CCMR2 = m2;
+				TIM1_CCER = er;
+				TIM1_EGR = TIM_EGR_COMG;
+				step = reverse + 1;
+				ertm = 600; // 100K ERPM (freq_min/duty_spup/duty_ramp have no effect)
+				continue;
+			}
 			__disable_irq();
+			step = oldstep;
 			ival = 10000 << IFTIM_XRES;
 			ertm = 100000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 			TIM1_DIER |= TIM_DIER_COMIE;
-#ifdef COMP_MAP
-			IFTIM_OCR = (1 << (IFTIM_XRES + 16)) - 1;
-#else
-			TIM_SR(IFTIM) = ~TIM_SR_CC1IF;
-			TIM_DIER(IFTIM) = TIM_DIER_UIE | TIM_DIER_CC1IE;
-#endif
-			TIM_ARR(IFTIM) = (1 << (IFTIM_XRES + 16)) - 1;
+			TIM_ARR(IFTIM) = IFTIM_OCR = (1 << (IFTIM_XRES + 16)) - 1;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			__enable_irq();
 			initpid(&bpid, 10000 << IFTIM_XRES);
@@ -707,10 +741,7 @@ void main(void) {
 			TIM_ARR(IFTIM) = 0;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			laststep();
-			step = 0;
-			sine = 0;
 			sync = 0;
-			prep = 0;
 			fast = 0;
 			ertm = 0;
 			erpm = 0;
@@ -718,9 +749,19 @@ void main(void) {
 		}
 		beep();
 		if (tick & 15) continue; // 16kHz -> 1kHz
-		if (volt >= cfg.prot_volt * cells * 10) v = 0;
-		else if (++v == 3000) reset(); // Low voltage cutoff after 3s
+		if (volt >= cfg.prot_volt * cells * 10) cutoff = 0;
+		else if (++cutoff == 3000) reset(); // Low voltage cutoff after 3s
 		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
 		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
+#ifdef LED_STAT
+		int x = 0;
+		if (running) {
+			if ((tickms << (input < 0) & 0x1ff) < (sine ? 0x180 : 0x100)) x = LED_CNT >= 2 ? 2 : 1;
+		} else if (curduty) {
+			if ((tickms & (lock ? 0x2ff : 0x3ff)) < 0x40) x = LED_CNT >= 3 ? 4 : LED_CNT;
+		}
+		if (cutback || cutoff || choke) x |= 1;
+		led = x;
+#endif
 	}
 }

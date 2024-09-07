@@ -33,29 +33,31 @@
 	XX(12, val, duty_ramp) \
 	XX(13, val, duty_rate) \
 	XX(14, val, duty_drag) \
-	XX(15, val, throt_mode) \
-	XX(16, val, throt_set) \
-	XX(17, val, throt_cal) \
-	XX(18, val, throt_min) \
-	XX(19, val, throt_mid) \
-	XX(20, val, throt_max) \
-	XX(21, val, analog_min) \
-	XX(22, val, analog_max) \
-	XX(23, val, input_mode) \
-	XX(24, val, input_chid) \
-	XX(25, val, telem_mode) \
-	XX(26, val, telem_phid) \
-	XX(27, val, telem_poles) \
-	XX(28, val, prot_stall) \
-	XX(29, val, prot_temp) \
-	XX(30, val, prot_volt) \
-	XX(31, val, prot_cells) \
-	XX(32, val, prot_curr) \
-	XX(33, str, music) \
-	XX(34, val, volume) \
-	XX(35, val, beacon) \
-	XX(36, val, bec) \
-	XX(37, val, led) \
+	XX(15, val, duty_lock) \
+	XX(16, val, throt_mode) \
+	XX(17, val, throt_set) \
+	XX(18, val, throt_cal) \
+	XX(19, val, throt_min) \
+	XX(20, val, throt_mid) \
+	XX(21, val, throt_max) \
+	XX(22, val, analog_min) \
+	XX(23, val, analog_max) \
+	XX(24, val, input_mode) \
+	XX(25, val, input_chid) \
+	XX(26, val, telem_mode) \
+	XX(27, val, telem_phid) \
+	XX(28, val, telem_poles) \
+	XX(29, val, prot_stall) \
+	XX(30, val, prot_temp) \
+	XX(31, val, prot_sens) \
+	XX(32, val, prot_volt) \
+	XX(33, val, prot_cells) \
+	XX(34, val, prot_curr) \
+	XX(35, str, music) \
+	XX(36, val, volume) \
+	XX(37, val, beacon) \
+	XX(38, val, bec) \
+	XX(39, val, led) \
 
 static int beep = -1;
 
@@ -151,10 +153,16 @@ CFG_MAP(XX)
 			if (narg != 1) goto error;
 			appendstr(&pos, "ESCape32 rev");
 			appendval(&pos, setbeepval(cfg.revision));
+			appendstr(&pos, ".");
+			appendval(&pos, cfg.revpatch);
 			appendstr(&pos, " [");
-			appendstr(&pos, cfg.target_name);
+			appendstr(&pos, cfg.name);
 			appendstr(&pos, "]\nTemp: ");
-			appendval(&pos, temp);
+			appendval(&pos, temp1);
+			if (temp2) {
+				appendstr(&pos, "C, ext ");
+				appendval(&pos, temp2);
+			}
 			appendstr(&pos, "C\nVolt: ");
 			appenddec(&pos, volt);
 			appendstr(&pos, "V\nCurr: ");

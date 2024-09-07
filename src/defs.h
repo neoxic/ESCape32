@@ -27,8 +27,7 @@
 #define TIM_DTG (((DEAD_TIME - 512) >> 4) | 0xe0)
 #endif
 
-#ifndef COMP_MAP
-#elif COMP_MAP == 123
+#if COMP_MAP == 123
 #define COMP_IN1 1
 #define COMP_IN2 2
 #define COMP_IN3 3
@@ -62,6 +61,8 @@
 #define SENS_CNT 1
 #elif SENS_MAP <= 0xffff
 #define SENS_CNT 2
+#elif SENS_MAP <= 0xffffff
+#define SENS_CNT 3
 #endif
 
 #ifndef LED_MAP
@@ -81,6 +82,9 @@
 #define LED_CNT 4
 #endif
 
+#ifndef TEMP_SENS
+#define TEMP_SENS(x) 0
+#endif
 #ifndef VOLT_MUL
 #define VOLT_MUL 0 // %
 #endif
@@ -133,10 +137,13 @@
 #define DUTY_RAMP 0
 #endif
 #ifndef DUTY_RATE
-#define DUTY_RATE 25
+#define DUTY_RATE 30
 #endif
 #ifndef DUTY_DRAG
 #define DUTY_DRAG 0
+#endif
+#ifndef DUTY_LOCK
+#define DUTY_LOCK 0
 #endif
 #ifndef THROT_MODE
 #define THROT_MODE 0
@@ -186,6 +193,9 @@
 #endif
 #ifndef PROT_TEMP
 #define PROT_TEMP 0
+#endif
+#ifndef PROT_SENS
+#define PROT_SENS 0
 #endif
 #ifndef PROT_VOLT
 #define PROT_VOLT 0

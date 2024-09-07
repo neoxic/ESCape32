@@ -111,22 +111,23 @@ static int ibusresp(char a, int x) {
 }
 
 static int ibusfunc(int len) {
-	static const uint16_t type[] = {0x201, 0x202, 0x203, 0x205, 0x206};
+	static const uint16_t type[] = {0x201, 0x201, 0x203, 0x205, 0x206, 0x202};
 	if (len != 4 || iobuf[0] != 4) return 0; // Invalid frame
 	char a = iobuf[1];
 	if (a + (iobuf[2] | iobuf[3] << 8) != 0xfffb) return 0; // Invalid checksum
-	int n = (a & 0xf) - (cfg.telem_phid - 1) * 5 - 1;
-	if (n < 0 || n > 4) return 0;
+	int n = (a & 0xf) - (cfg.telem_phid - 1) * 6 - 1;
+	if (n < 0 || n > 5) return 0;
 	switch (a >> 4) {
 		case 0x8: return 4; // Probe
 		case 0x9: return ibusresp(a, type[n]); // Type
 		case 0xa: // Value
 			switch (n) {
-				case 0: return ibusresp(a, (temp + 40) * 10);
-				case 1: return ibusresp(a, min(erpm / (cfg.telem_poles >> 1), 0xffff));
+				case 0: return ibusresp(a, (temp1 + 40) * 10);
+				case 1: return ibusresp(a, (temp2 + 40) * 10);
 				case 2: return ibusresp(a, volt);
 				case 3: return ibusresp(a, curr);
 				case 4: return ibusresp(a, csum);
+				case 5: return ibusresp(a, min(erpm / (cfg.telem_poles >> 1), 0xffff));
 			}
 	}
 	return 0;
@@ -157,18 +158,19 @@ static int sportresp(int t, int v) {
 }
 
 static int sportfunc(int len) {
-	static const uint16_t type[] = {0xb70, 0x500, 0x210, 0x200, 0x600};
+	static const uint16_t type[] = {0xb70, 0xb71, 0x210, 0x200, 0x600, 0x500};
 	static int n;
 	if (len != 2 || iobuf[0] != 0x7e) return 0; // Invalid frame
 	if ((iobuf[1] & 0x1f) != cfg.telem_phid - 1) return 0;
-	if (n == 5) n = 0;
+	if (n == 6) n = 0;
 	int t = type[n];
 	switch (n++) {
-		case 0: return sportresp(t, temp);
-		case 1: return sportresp(t, erpm / (cfg.telem_poles >> 1));
+		case 0: return sportresp(t, temp1);
+		case 1: return sportresp(t, temp2);
 		case 2: return sportresp(t, volt);
 		case 3: return sportresp(t, curr / 10);
 		case 4: return sportresp(t, csum);
+		case 5: return sportresp(t, erpm / (cfg.telem_poles >> 1));
 	}
 	return 0;
 }
@@ -176,7 +178,7 @@ static int sportfunc(int len) {
 void kisstelem(void) {
 	if (DMA1_CCR(USART1_TX_DMA) & DMA_CCR_EN) return;
 	int r = erpm / 100;
-	iobuf[0] = temp;
+	iobuf[0] = temp1;
 	iobuf[1] = volt >> 8;
 	iobuf[2] = volt;
 	iobuf[3] = curr >> 8;
@@ -211,7 +213,7 @@ static void crsftelem(void) {
 }
 
 void autotelem(void) {
-	static int d;
+	static int n;
 	int x = 0;
 	switch (telmode) {
 		case 1: // KISS
@@ -222,16 +224,19 @@ void autotelem(void) {
 			break;
 	}
 	if (!dshotext) return;
-	switch (++d) { // Extended DSHOT telemetry
+	switch (n++) { // Extended DSHOT telemetry
+		case 0:
+			x = 0x200 | (temp1 & 0xff); // ESC temperature (C)
+			break;
 		case 1:
-			x = 0x200 | (temp & 0xff);
+			x = 0x800 | (temp2 & 0xff); // Motor temperature (C)
 			break;
 		case 2:
-			x = 0x400 | ((volt / 25) & 0xff);
+			x = 0x400 | ((volt / 25) & 0xff); // Voltage (V/4)
 			break;
 		case 3:
-			x = 0x600 | ((curr / 100) & 0xff);
-			d = 0;
+			x = 0x600 | ((curr / 100) & 0xff); // Current (A)
+			n = 0;
 			break;
 	}
 	__disable_irq();

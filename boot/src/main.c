@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 2
+#define REVISION 3
 
 #define CMD_PROBE  0
 #define CMD_INFO   1
@@ -45,7 +45,8 @@ void main(void) {
 				sendval(RES_OK);
 				break;
 			case CMD_INFO: { // Get info
-				char buf[32] = {REVISION};
+				int mcu = DBGMCU_IDCODE;
+				char buf[32] = {REVISION, IO_PIN, mcu, mcu >> 8, mcu >> 16, mcu >> 24};
 				senddata(buf, sizeof buf);
 				break;
 			}

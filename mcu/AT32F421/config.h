@@ -19,8 +19,7 @@
 
 #define CLK 120000000
 #define IO_PA2
-#define IO_TYPE 0
-#define GPTIM TIM6
+#define XTIM TIM6
 
 #define IFTIM TIM3
 #define IFTIM_XRES 0

@@ -37,14 +37,8 @@ void init(void) {
 	GPIOA_MODER &= ~0x10; // A2 (USART2_TX)
 #else
 	RCC_APB1ENR |= RCC_APB1ENR_TIM3EN;
-#ifdef IO_PA6
-	GPIOA_AFRL |= 0x1000000; // A6 (TIM3_CH1)
-	GPIOA_PUPDR |= 0x1000; // A6 (pull-up)
-	GPIOA_MODER &= ~0x1000; // A6 (TIM3_CH1)
-#else
 	GPIOB_AFRL |= 0x10000; // B4 (TIM3_CH1)
 	GPIOB_PUPDR |= 0x100; // B4 (pull-up)
 	GPIOB_MODER &= ~0x100; // B4 (TIM3_CH1)
-#endif
 #endif
 }

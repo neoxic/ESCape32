@@ -18,7 +18,7 @@
 #pragma once
 
 #define CLK 48000000
-#define GPTIM TIM6
+#define XTIM TIM6
 
 #define IFTIM TIM2
 #define IFTIM_XRES 2
@@ -33,13 +33,11 @@
 #define iftim_isr tim2_isr
 
 #ifdef IO_PA2
-#define IO_TYPE 0
 #define IOTIM TIM15
 #define IOTIM_IDR (GPIOA_IDR & 0x4) // A2
 #define IOTIM_DMA 5
 #define iotim_isr tim15_isr
 #else
-#define IO_TYPE 2
 #define IOTIM TIM3
 #define IOTIM_IDR (GPIOB_IDR & 0x10) // B4
 #define IOTIM_DMA 4

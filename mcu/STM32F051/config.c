@@ -29,10 +29,18 @@
 #define SENS_CHAN 0x48
 #endif
 
+#ifdef TEMP_CHAN
+#define TEMP_SHIFT 12
+#else
+#define TEMP_SHIFT 0
+#define TEMP_CHAN 0x10000 // CH16 (temp)
+#define TEMP_FUNC(x) (((x) / 3300 - ST_TSENSE_CAL1_30C) * 320 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 120)
+#endif
+
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
 static char len, ain;
-static uint16_t buf[5];
+static uint16_t buf[6];
 
 void init(void) {
 	RCC_APB2RSTR = -1;
@@ -57,16 +65,15 @@ void init(void) {
 	RCC_APB2ENR |= RCC_APB2ENR_TIM15EN;
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
+	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
 #else
 	RCC_APB1ENR |= RCC_APB1ENR_TIM3EN;
 	GPIOB_AFRL |= 0x10000; // B4 (TIM3_CH1)
 	GPIOB_PUPDR |= 0x100; // B4 (pull-up)
 	GPIOB_MODER &= ~0x100; // B4 (TIM3_CH1)
-#endif
-#endif
-
 	nvic_set_priority(NVIC_TIM3_IRQ, 0x40);
-	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
+#endif
+#endif
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
 	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
@@ -84,28 +91,28 @@ void init(void) {
 	nvic_enable_irq(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ);
 
-	ADC1_CR = ADC_CR_ADCAL;
-	while (ADC1_CR & ADC_CR_ADCAL);
-	while (ADC1_CR = ADC_CR_ADEN, !(ADC1_ISR & ADC_ISR_ADRDY)); // Keep powering on until ready (Errata 2.5.3)
-	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
-	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
-	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = SENS_CHAN | 0x30000; // CH17 (vref), CH16 (temp)
-	len = SENS_CNT + 2;
-	if (IO_ANALOG) {
-		ADC1_CHSELR |= 1 << AIN_CHAN;
-		ain = 1;
-		++len;
-	}
-	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
-	DMA1_CMAR(1) = (uint32_t)buf;
-
 	TIM1_DIER = TIM_DIER_UIE | TIM_DIER_CC4IE; // Software comparator blanking
 	TIM1_SMCR = TIM_SMCR_TS_ITR1; // TRGI=TIM2
 	TIM2_CR2 = TIM_CR2_MMS_COMPARE_OC1REF; // TRGO=OC1REF
 	TIM2_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2; // Inverted PWM on OC1
 	TIM2_CCMR2 = TIM_CCMR2_CC4S_IN_TI4;
 	TIM2_CCER = TIM_CCER_CC4E; // IC4 on rising edge on TI4 (COMP_OUT)
+
+	ADC1_CR = ADC_CR_ADCAL;
+	while (ADC1_CR & ADC_CR_ADCAL);
+	while (ADC1_CR = ADC_CR_ADEN, !(ADC1_ISR & ADC_ISR_ADRDY)); // Keep powering on until ready (Errata 2.5.3)
+	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
+	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
+	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
+	ADC1_CHSELR = SENS_CHAN | TEMP_CHAN | 0x20000; // CH17 (vref)
+	len = SENS_CNT + 2;
+	if (IO_ANALOG) {
+		ADC1_CHSELR |= 1 << AIN_CHAN;
+		++len;
+		ain = 1;
+	}
+	DMA1_CPAR(1) = (uint32_t)&ADC1_DR;
+	DMA1_CMAR(1) = (uint32_t)buf;
 }
 
 void compctl(int x) {
@@ -166,25 +173,27 @@ void tim1_cc_isr(void) {
 void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
-	int i = 0, v = 0, c = 0, x = 0;
+	int i = 0, u = 0, v = 0, c = 0, a = 0;
 #ifndef AIN_LAST
-	if (ain) x = buf[i++];
+	if (ain) a = buf[i++];
 #endif
 #ifdef SENS_SWAP
 	v = buf[i++];
 	c = buf[i++];
 #else
-#if SENS_CNT == 2
+#if SENS_CNT >= 2
 	c = buf[i++];
 #endif
-#if SENS_CNT > 0
+#if SENS_CNT >= 1
 	v = buf[i++];
 #endif
 #endif
+#if SENS_CNT >= 3
+	u = buf[i++];
+#endif
 #ifdef AIN_LAST
-	if (ain) x = buf[i++];
+	if (ain) a = buf[i++];
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];
-	int t = (buf[i] * r / 3300 - ST_TSENSE_CAL1_30C) * 320 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 120;
-	adcdata(t, v * r >> 12, c * r >> 12, x * r >> 12);
+	adcdata(TEMP_FUNC(buf[i] * r >> TEMP_SHIFT), u * r >> 12, v * r >> 12, c * r >> 12, a * r >> 12);
 }
