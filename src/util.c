@@ -22,9 +22,9 @@
 #endif
 
 void initbec(void) {
-#ifdef USE_BEC
+#ifdef BEC_MAP
 	int x = cfg.bec;
-#if USE_BEC == 0xB3B5
+#if BEC_MAP == 0xB3B5
 	GPIOB_ODR |= (x & 1) << 3 | (x & 2) << 4;
 	GPIOB_MODER &= ~0x880; // B3,B5 (output)
 #else // Use SWD pads
@@ -182,19 +182,19 @@ void checkcfg(void) {
 	cfg.telem_poles = clamp(cfg.telem_poles & ~1, 2, 100);
 	cfg.prot_stall = cfg.prot_stall && !cfg.brushed ? clamp(cfg.prot_stall, 1800, 3200) : 0;
 	cfg.prot_temp = cfg.prot_temp ? clamp(cfg.prot_temp, 60, 140) : 0;
-#if SENS_CNT > 0
+#if VOLT_MUL > 0
 	cfg.prot_volt = cfg.prot_volt ? clamp(cfg.prot_volt, 28, 38) : 0;
 	cfg.prot_cells = clamp(cfg.prot_cells, 0, 16);
 #else
 	cfg.prot_volt = 0;
 	cfg.prot_cells = 0;
 #endif
-#if SENS_CNT < 2
+#if CURR_MUL == 0
 	cfg.prot_curr = 0;
 #endif
 	cfg.volume = clamp(cfg.volume, 0, 100);
 	cfg.beacon = clamp(cfg.beacon, 0, 100);
-#ifdef USE_BEC
+#ifdef BEC_MAP
 	cfg.bec = clamp(cfg.bec, 0, 3);
 #else
 	cfg.bec = 0;

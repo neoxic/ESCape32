@@ -25,6 +25,8 @@
 #elif SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
 #define SENS_CHAN 0x48
 #define SENS_SWAP
+#elif SENS_MAP == 0xA6A3 // A6 (volt), A3 (curr)
+#define SENS_CHAN 0x48
 #endif
 
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
@@ -103,7 +105,7 @@ void init(void) {
 	TIM2_CR2 = TIM_CR2_MMS_COMPARE_OC1REF; // TRGO=OC1REF
 	TIM2_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2; // Inverted PWM on OC1
 	TIM2_CCMR2 = TIM_CCMR2_CC4S_IN_TI4;
-	TIM2_CCER = TIM_CCER_CC4E; // IC4 on rising edge on TI4 (COMP1_OUT)
+	TIM2_CCER = TIM_CCER_CC4E; // IC4 on rising edge on TI4 (COMP_OUT)
 }
 
 void compctl(int x) {
@@ -151,14 +153,14 @@ void tim1_brk_up_trg_com_isr(void) {
 	int sr = TIM1_SR;
 	if (sr & TIM_SR_UIF) {
 		TIM1_SR = ~TIM_SR_UIF;
-		if (TIM1_CCR4) COMP_CSR &= ~0x700; // COMP1_OUT off
+		if (TIM1_CCR4) COMP_CSR &= ~0x700; // COMP_OUT off
 	}
 	if (sr & TIM_SR_COMIF) tim1_com_isr();
 }
 
 void tim1_cc_isr(void) {
 	TIM1_SR = ~TIM_SR_CC4IF;
-	COMP_CSR |= 0x400; // COMP1_OUT=TIM2_IC4
+	COMP_CSR |= 0x400; // COMP_OUT=TIM2_IC4
 }
 
 void dma1_channel1_isr(void) {
