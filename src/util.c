@@ -85,10 +85,6 @@
 #define LED3_INV
 #endif
 
-#define GPIO(port, name) _GPIO(port, name)
-#define _GPIO(port, name) __GPIO(port, name)
-#define __GPIO(port, name) GPIO##port##_##name
-
 #ifdef STM32G4
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
@@ -101,15 +97,19 @@ void initgpio(void) {
 #ifdef BEC_MAP
 	int x = cfg.bec;
 #if BEC_MAP == 0xADE // SWD pins
-	if (GPIOA_IDR & 0x6000) return; // SWD is active or BEC is not connected
-	GPIOA_ODR |= x << 13;
-	GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
-	GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
-	GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
+	if (!(GPIOA_IDR & 0x6000)) { // External pull-down
+		GPIOA_ODR |= x << 13;
+		GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
+		GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
+		GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
+	}
 #else
 	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) << (BEC_PIN2 - 1);
 	GPIO(BEC_PORT, MODER) &= ~((2 << BEC_PIN1 * 2) | (2 << BEC_PIN2 * 2));
 #endif
+#endif
+#ifdef RPM_PIN
+	GPIO(RPM_PORT, MODER) = (GPIO(RPM_PORT, MODER) & ~(3 << RPM_PIN * 2)) | (1 << RPM_PIN * 2);
 #endif
 }
 

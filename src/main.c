@@ -125,6 +125,10 @@ static void nextstep(void) {
 		TIM1_CCR2 = DEAD_TIME + (sinedata[b] * p >> 7);
 		TIM1_CCR3 = DEAD_TIME + (sinedata[c] * p >> 7);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
+#ifdef RPM_PIN
+		if (step == 1) GPIO(RPM_PORT, BSRR) = 1 << (RPM_PIN + 16);
+		else if (step == 181) GPIO(RPM_PORT, BSRR) = 1 << RPM_PIN;
+#endif
 		if (prep) return;
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
@@ -322,6 +326,10 @@ static void nextstep(void) {
 	buf[step - 1] = ival;
 	if (sync < 6) return;
 	ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
+#ifdef RPM_PIN
+	if (step == 1) GPIO(RPM_PORT, BSRR) = 1 << (RPM_PIN + 16);
+	else if (step == 4) GPIO(RPM_PORT, BSRR) = 1 << RPM_PIN;
+#endif
 }
 
 static void laststep(void) {

@@ -94,6 +94,9 @@
 #ifndef SERIAL_BR
 #define SERIAL_BR 460800
 #endif
+#ifndef RPM_PORT
+#define RPM_PORT B
+#endif
 
 // Default settings
 

@@ -58,6 +58,10 @@
 #define AIN_CHAN 2
 #endif
 
+#define GPIO(port, name) _GPIO(port, name)
+#define _GPIO(port, name) __GPIO(port, name)
+#define __GPIO(port, name) GPIO##port##_##name
+
 typedef struct {
 	const uint16_t id;
 	const char revision;
