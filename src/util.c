@@ -428,6 +428,7 @@ int playmusic(const char *str, int vol) {
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
+	TIM1_CCR2 = 0; // Preload silence
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
 	for (int a, b, c = 0; (a = *str++);) {
 		if (a >= 'a' && a <= 'g') a -= 'c', b = 0; // Low note
@@ -441,8 +442,8 @@ int playmusic(const char *str, int vol) {
 		a = (a + 7) % 7 << 1;
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
-		TIM1_ARR = arr[a] >> (b + c); // Frequency
 		TIM1_CCR2 = vol; // Volume
+		TIM1_ARR = arr[a] >> (b + c); // Frequency
 	update:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		a = strtol(str, &end, 10); // Duration

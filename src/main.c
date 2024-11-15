@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 12
-#define REVPATCH 0
+#define REVPATCH 1
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -79,9 +79,8 @@ static uint32_t tickms, tickmsv;
 static volatile char tickmsf;
 #ifdef HALL_MAP
 static int hint = 0x10000;
-#endif
 
-static void reset(void) {
+static void error(void) {
 	ledctl(1); // Indicate error
 	TIM1_EGR = TIM_EGR_BG;
 	TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
@@ -93,6 +92,7 @@ static void reset(void) {
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
 }
+#endif
 
 /*
 6-step commutation sequence:
@@ -158,11 +158,11 @@ static void nextstep(void) {
 		for (int i = 0, j = 0; j < 4; ++j) {
 			int y = hallcode();
 			if (x == y) continue;
-			if (++i == 20) reset(); // Unstable signal
+			if (++i == 20) error(); // Unstable signal
 			x = y;
 			j = 0;
 		}
-		if (x < 1 || x > 6) reset(); // Invalid Hall sensor code
+		if (x < 1 || x > 6) error(); // Invalid Hall sensor code
 		step = map[x - 1][!!reverse];
 		ival = (ival + (hint >> (2 - IFTIM_XRES))) >> 1;
 	} else
@@ -545,7 +545,7 @@ void main(void) {
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 #ifdef HALL_MAP
-	if ((sensored = hallcode() != 7)) {
+	if ((sensored = hallcode() != 7)) { // Hybrid mode
 		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
 		TIM3_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
@@ -578,6 +578,7 @@ void main(void) {
 		}
 	}
 	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
+	rearm:
 		TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
 		TIM_ARR(XTIM) = 2499; // 250ms
 		TIM_CR1(XTIM) = TIM_CR1_URS;
@@ -603,7 +604,7 @@ void main(void) {
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		__WFI();
 		int ccr, arr = CLK_KHZ / cfg.freq_min;
-		int input = throt;
+		int input = cutoff == 3000 ? 0 : throt;
 		int range = cfg.sine_range * 20;
 		int delta = range ? 10 : 0;
 		int newduty = 0;
@@ -757,8 +758,8 @@ void main(void) {
 		}
 		beep();
 		if (tick & 15) continue; // 16kHz -> 1kHz
-		if (volt >= cfg.prot_volt * cells * 10) cutoff = 0;
-		else if (++cutoff == 3000) reset(); // Low voltage cutoff after 3s
+		if (cutoff < 3000) cutoff = volt < cfg.prot_volt * cells * 10 ? cutoff + 1 : 0;
+		else if (!running) goto rearm; // Low voltage cutoff after 3s
 		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
 		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
 #ifdef LED_STAT
