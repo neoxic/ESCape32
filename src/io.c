@@ -565,7 +565,7 @@ static int serialreq(char a, int x) {
 			iobuf[8] = x = min(ertm, 0xffff);
 			iobuf[9] = x >> 8;
 			iobuf[10] = crc8(iobuf, 10);
-			return 10;
+			return 11;
 		case 0x9: return serialresp(min(ertm, 0xffff)); // Electrical revolution time (us)
 		case 0xa: return serialresp(temp1); // ESC temperature (C)
 		case 0xb: return serialresp(temp2); // Motor temperature (C)
