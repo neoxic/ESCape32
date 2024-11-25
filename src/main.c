@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 12
-#define REVPATCH 2
+#define REVPATCH 3
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -333,30 +333,15 @@ static void nextstep(void) {
 }
 
 static void laststep(void) {
-#ifdef PWM_ENABLE
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
-#else
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
-#endif
-	int er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
-#ifdef INVERTED_HIGH
-	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
-#endif
-	TIM1_CCER = er;
-	TIM1_EGR = TIM_EGR_COMG;
+	resetcom();
 	if (sine && prep) { // Switch over to 6-step
 		step = (step + 29) / 60 + 1;
 		if (step > 6) step = 1;
 	}
 	sine = 0;
 	prep = 0;
-	if (lock) nextstep(); // Active drag brake
-	else { // Passive drag brake
+	if (lock) nextstep();
+	else {
 #ifdef PWM_ENABLE
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM2;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM2;
@@ -628,8 +613,13 @@ void main(void) {
 			running = 1;
 		} else { // Neutral
 			if (braking == 1) braking = 2; // Reverse after braking
-			if (sync < 6) { // Drag brake
-				curduty = lock ? min(cfg.duty_drag, 100 - cutback) : cfg.duty_drag * 20; // 60% cutback at 15C above prot_temp
+			if (lock) { // Active drag brake
+				curduty = min(cfg.duty_drag, 100 - cutback); // 60% cutback at 15C above prot_temp
+				running = 0;
+				goto setduty;
+			}
+			if (sync < 6) { // Passive drag brake
+				curduty = cfg.duty_drag * 20;
 				running = 0;
 				goto setduty;
 			}
@@ -726,7 +716,7 @@ void main(void) {
 				TIM1_CCMR1 = m1;
 				TIM1_CCMR2 = m2;
 				TIM1_CCER = er;
-				TIM1_EGR = TIM_EGR_COMG;
+				TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 				step = reverse + 1;
 				ertm = 600; // 100K ERPM (freq_min/duty_spup/duty_ramp have no effect)
 				continue;

@@ -147,6 +147,7 @@ int calcpid(PID *pid, int x, int y);
 void checkcfg(void);
 int savecfg(void);
 int resetcfg(void);
+void resetcom(void);
 int playmusic(const char *str, int vol);
 
 static inline int min(int a, int b) {return a < b ? a : b;}

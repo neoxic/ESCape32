@@ -398,6 +398,25 @@ int resetcfg(void) {
 	return savecfg();
 }
 
+void resetcom(void) {
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+#else
+	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
+	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
+#endif
+	int er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+	TIM1_CCER = er;
+	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
+}
+
 int playmusic(const char *str, int vol) {
 	static const uint16_t arr[] = {30575, 28859, 27240, 25713, 24268, 22906, 21621, 20407, 19261, 18181, 17160, 16196, 15287};
 	static char flag;
@@ -412,6 +431,7 @@ int playmusic(const char *str, int vol) {
 	if (!vol || ertm || flag) return 0;
 	flag = 1;
 	vol <<= 1;
+	resetcom();
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
@@ -428,13 +448,14 @@ int playmusic(const char *str, int vol) {
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
-	TIM1_CCR2 = 0; // Preload silence
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
 	for (int a, b, c = 0; (a = *str++);) {
 		if (a >= 'a' && a <= 'g') a -= 'c', b = 0; // Low note
 		else if (a >= 'A' && a <= 'G') a -= 'C', b = 1; // High note
-		else if (a == '_') goto update; // Pause
-		else {
+		else if (a == '_') { // Pause
+			TIM1_CCR2 = 0;
+			goto update;
+		} else {
 			if (a == '+' && !c++) continue; // Octave up
 			if (a == '-' && c--) continue; // Octave down
 			break; // Invalid specifier
@@ -442,8 +463,10 @@ int playmusic(const char *str, int vol) {
 		a = (a + 7) % 7 << 1;
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
-		TIM1_CCR2 = vol; // Volume
+		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
 		TIM1_ARR = arr[a] >> (b + c); // Frequency
+		TIM1_CCR2 = vol; // Volume
+		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
 	update:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 		a = strtol(str, &end, 10); // Duration
@@ -453,23 +476,8 @@ int playmusic(const char *str, int vol) {
 			str = end;
 		}
 		delay(tmp * a);
-		TIM1_CCR2 = 0; // Preload silence
 	}
-#ifdef PWM_ENABLE
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
-#else
-	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
-	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
-#endif
-	er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
-#ifdef INVERTED_HIGH
-	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
-#endif
-	TIM1_CCER = er;
+	resetcom();
 	TIM1_PSC = 0;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
