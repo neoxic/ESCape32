@@ -17,6 +17,6 @@
 
 #pragma once
 
-#define CLK 168000000
+#define CLK 80000000
 #define PAGE_SIZE 2048
 #define IO_PA2
