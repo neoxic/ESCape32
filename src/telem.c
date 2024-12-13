@@ -158,7 +158,7 @@ static int sportresp(int t, int v) {
 }
 
 static int sportfunc(int len) {
-	static const uint16_t type[] = {0xb70, 0xb71, 0x210, 0x200, 0x600, 0x500};
+	static const uint16_t type[] = {0xb70, 0x400, 0x210, 0x200, 0xb30, 0x500};
 	static int n;
 	if (len != 2 || iobuf[0] != 0x7e) return 0; // Invalid frame
 	if ((iobuf[1] & 0x1f) != cfg.telem_phid - 1) return 0;
