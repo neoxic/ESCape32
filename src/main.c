@@ -74,11 +74,13 @@ int throt, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext;
 
 static int oldstep, step, sine, sync, ival, cutback, led;
-static char prep, fast, lock, tick, ready, reverse, sensored;
+static char prep, fast, lock, tick, ready, reverse;
 static uint32_t tickms, tickmsv;
 static volatile char tickmsf;
-#ifdef HALL_MAP
-static int hint = 0x10000;
+#ifndef HALL_MAP
+static const int hall;
+#else
+static int hall;
 
 static void error(void) {
 	ledctl(1); // Indicate error
@@ -91,6 +93,18 @@ static void error(void) {
 	while (TIM_CR1(XTIM) & TIM_CR1_CEN); // Wait for 1s
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
+}
+
+static int getcode(void) {
+	int x = -1;
+	for (int i = 0, j = 0; j < 4; ++j) {
+		int y = hallcode();
+		if (x == y) continue;
+		if (++i == 20) error(); // Unstable signal
+		x = y;
+		j = 0;
+	}
+	return x;
 }
 #endif
 
@@ -153,18 +167,10 @@ static void nextstep(void) {
 	}
 #ifdef HALL_MAP
 	static const char map[][2] = {{2, 4}, {4, 6}, {3, 5}, {6, 2}, {1, 3}, {5, 1}}; // Hall sensor code mapping
-	if (sensored && hint > 20000) {
-		int x = -1;
-		for (int i = 0, j = 0; j < 4; ++j) {
-			int y = hallcode();
-			if (x == y) continue;
-			if (++i == 20) error(); // Unstable signal
-			x = y;
-			j = 0;
-		}
-		if (x < 1 || x > 6) error(); // Invalid Hall sensor code
-		step = map[x - 1][!!reverse];
-		ival = (ival + (hint >> (2 - IFTIM_XRES))) >> 1;
+	if (hall > 4000) {
+		int code = getcode();
+		if (code < 1 || code > 6) error(); // Invalid Hall sensor code
+		step = map[code - 1][!!reverse];
 	} else
 #endif
 	if (reverse) {
@@ -323,7 +329,7 @@ static void nextstep(void) {
 	}
 	TIM_SR(IFTIM) = 0; // Clear BEMF events before enabling interrupts
 	TIM_DIER(IFTIM) = TIM_DIER_UIE | IFTIM_ICIE;
-	buf[step - 1] = ival;
+	buf[step - 1] = hall > 4000 ? hall << IFTIM_XRES : ival;
 	if (sync < 6) return;
 	ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
 #ifdef RPM_PIN
@@ -406,15 +412,21 @@ void iftim_isr(void) { // BEMF zero-crossing
 void tim3_isr(void) { // Any change on Hall sensor inputs
 	if (TIM3_SR & TIM_SR_UIF) { // Timeout
 		TIM3_SR = ~TIM_SR_UIF;
-		hint = 0x10000;
-		if (!step) return;
+		hall = 0x10000;
+		if (sine || !step) return;
 		sync = 0;
 		fast = 0;
 		ival = 10000 << IFTIM_XRES;
 		ertm = 100000000;
 		return;
 	}
-	hint = (TIM3_CCR1 + hint * 3) >> 2;
+	hall = (TIM3_CCR1 + hall * 3) >> 2;
+	if (hall < 5000 || sine || !step) return;
+	ival = hall << IFTIM_XRES;
+	TIM1_EGR = TIM_EGR_COMG;
+	TIM_EGR(IFTIM) = TIM_EGR_UG;
+	TIM_DIER(IFTIM) = 0;
+	if (sync < 6) ++sync;
 }
 #endif
 
@@ -530,16 +542,17 @@ void main(void) {
 	TIM_EGR(IFTIM) = TIM_EGR_UG;
 	TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 #ifdef HALL_MAP
-	if ((sensored = hallcode() != 7)) { // Hybrid mode
+	if (getcode() != 7) { // Hybrid mode
 		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
 		TIM3_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
 		TIM3_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE;
-		TIM3_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
+		TIM3_PSC = CLK_MHZ / 2 - 1; // 500ns resolution
 		TIM3_ARR = -1;
 		TIM3_CR1 = TIM_CR1_URS;
 		TIM3_EGR = TIM_EGR_UG;
 		TIM3_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+		hall = 0x10000;
 	}
 #endif
 	nvic_set_priority(NVIC_PENDSV_IRQ, 0x80);
@@ -579,7 +592,7 @@ void main(void) {
 		}
 		throt = 0;
 		TIM_CR1(XTIM) = 0;
-		playmusic(sensored ? "G_GC" : "GC", cfg.volume);
+		playmusic(hall ? "G_GC" : "GC", cfg.volume);
 	}
 #endif
 	laststep();
@@ -750,7 +763,7 @@ void main(void) {
 		if (tick & 15) continue; // 16kHz -> 1kHz
 		if (cutoff < 3000) cutoff = volt < cfg.prot_volt * cells * 10 ? cutoff + 1 : 0;
 		else if (!running) goto rearm; // Low voltage cutoff after 3s
-		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
+		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, hall > 4000 ? hall : ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
 		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
 #ifdef LED_STAT
 		int x = 0;
