@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 12
-#define REVPATCH 4
+#define REVPATCH 5
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -631,7 +631,7 @@ void main(void) {
 				running = 0;
 				goto setduty;
 			}
-			if (sync < 6) { // Passive drag brake
+			if (sync < 6 || erpm < 800) { // Passive drag brake
 				curduty = cfg.duty_drag * 20;
 				running = 0;
 				goto setduty;

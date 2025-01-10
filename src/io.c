@@ -324,7 +324,6 @@ static void dshotdma(void) {
 		TIM_SMCR(IOTIM) = 0;
 		TIM_CCMR1(IOTIM) = 0; // Disable OC before enabling PWM to force OC1REF update (RM: OC1M, note #2)
 		TIM_CCMR1(IOTIM) = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2;
-		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output as soon as possible
 		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
 		DMA1_CCR(IOTIM_DMA) = 0;
 		DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf2;
@@ -336,6 +335,7 @@ static void dshotdma(void) {
 		TIM_EGR(IOTIM) = TIM_EGR_UG; // Update registers and trigger DMA to preload the first bit
 		TIM_EGR(IOTIM); // Ensure UEV has happened
 		TIM_ARR(IOTIM) = dshotarr2; // Preload bit time
+		TIM_CCER(IOTIM) = TIM_CCER_CC1E; // Enable output
 		__enable_irq();
 	}
 	int x = 0;

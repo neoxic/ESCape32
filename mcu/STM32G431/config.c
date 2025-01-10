@@ -84,9 +84,9 @@ void init(void) {
 	RCC_CFGR = RCC_CFGR_SWx_PLL | RCC_CFGR_HPRE_DIV2 << RCC_CFGR_HPRE_SHIFT;
 	PWR_CR5 = 0; // R1MODE=0 (boost mode)
 	TIM6_ARR = CLK_MHZ / 2 - 1;
-	TIM1_SR = ~TIM_SR_UIF;
-	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM1_CR1 & TIM_CR1_CEN); // Ensure 1us HCLK/2 transition period (RM 7.2.7)
+	TIM6_SR = ~TIM_SR_UIF;
+	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM6_CR1 & TIM_CR1_CEN); // Ensure 1us HCLK/2 transition period (RM 7.2.7)
 	RCC_CFGR = RCC_CFGR_SWx_PLL;
 
 	// Default GPIO state - analog input
