@@ -35,11 +35,19 @@
 #define SENS_CHAN 0x654
 #endif
 
+#ifndef ANALOG_CHAN
+#ifdef IO_PA6
+#define ANALOG_CHAN 0x6 // ADC_IN6 (PA6)
+#else
+#define ANALOG_CHAN 0x2 // ADC_IN2 (PA2)
+#endif
+#endif
+
 #ifdef TEMP_CHAN
 #define TEMP_SHIFT 12
 #else
 #define TEMP_SHIFT 0
-#define TEMP_CHAN 0xc // CH12 (temp)
+#define TEMP_CHAN 0xc // ADC_IN12 (temp)
 #define TEMP_FUNC(x) (((x) / 3000 - ST_TSENSE_CAL1_30C) * 400 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 120)
 #endif
 
@@ -65,6 +73,32 @@ void init(void) {
 	RCC_APBENR2 = RCC_APBENR2_SYSCFGEN | RCC_APBENR2_TIM1EN | RCC_APBENR2_USART1EN | RCC_APBENR2_ADCEN;
 	SYSCFG_CFGR1 = SYSCFG_CFGR1_PA11_RMP | SYSCFG_CFGR1_PA12_RMP; // A11->A9, A12->A10
 	SCB_VTOR = (uint32_t)_rom; // Set vector table address
+
+#ifdef USE_HSE
+	if (!cfg.throt_cal) {
+		TIM6_PSC = CLK_MHZ - 1; // 1us resolution
+		TIM6_ARR = 9999;
+		TIM6_EGR = TIM_EGR_UG;
+		TIM6_SR = ~TIM_SR_UIF;
+		TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+		RCC_CR |= RCC_CR_HSEON;
+		while (!(RCC_CR & RCC_CR_HSERDY)) {
+			if (!(TIM6_CR1 & TIM_CR1_CEN)) { // Timeout 10ms
+				RCC_CR &= ~RCC_CR_HSEON;
+				goto skip;
+			}
+		}
+		RCC_CFGR = RCC_CFGR_SW_HSE;
+		while ((RCC_CFGR & RCC_CFGR_SWS_MASK << RCC_CFGR_SWS_SHIFT) != RCC_CFGR_SWS_HSE << RCC_CFGR_SWS_SHIFT);
+		RCC_CR &= ~RCC_CR_PLLON;
+		while (RCC_CR & RCC_CR_PLLRDY);
+		RCC_PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE | (128 / USE_HSE) << RCC_PLLCFGR_PLLN_SHIFT | RCC_PLLCFGR_PLLREN | 1 << RCC_PLLCFGR_PLLR_SHIFT;
+		RCC_CR |= RCC_CR_PLLON;
+		while (!(RCC_CR & RCC_CR_PLLRDY));
+		RCC_CFGR = RCC_CFGR_SW_PLLRCLK;
+	}
+skip:
+#endif
 
 	// Default GPIO state - analog input
 	GPIOA_AFRL = 0x20000000; // A7 (TIM1_CH1N)
@@ -144,7 +178,9 @@ void init(void) {
 	ADC_CFGR2(ADC1) = ADC_CFGR2_CKMODE_PCLK_DIV4 << ADC_CFGR2_CKMODE_SHIFT;
 	ADC_CCR(ADC1) = ADC_CCR_VREFEN | ADC_CCR_TSEN;
 	ADC_CR(ADC1) = ADC_CR_ADVREGEN;
+	TIM6_PSC = 0;
 	TIM6_ARR = CLK_KHZ / 50 - 1;
+	TIM6_EGR = TIM_EGR_UG;
 	TIM6_SR = ~TIM_SR_UIF;
 	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 20us (RM 15.3.2)
@@ -157,10 +193,10 @@ void init(void) {
 	ADC_CHSELR(ADC1) = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		ADC_CHSELR(ADC1) |= AIN_CHAN << (len++ << 2);
+		ADC_CHSELR(ADC1) |= ANALOG_CHAN << (len++ << 2);
 		ain = 1;
 	}
-	ADC_CHSELR(ADC1) |= (TEMP_CHAN | 0xfd0) << (len << 2); // CH13 (vref)
+	ADC_CHSELR(ADC1) |= (TEMP_CHAN | 0xfd0) << (len << 2); // ADC_IN13 (vref)
 	len += 2;
 	while (!(ADC_ISR(ADC1) & ADC_ISR_CCRDY));
 	DMA1_CPAR(4) = (uint32_t)&ADC_DR(ADC1);

@@ -17,35 +17,40 @@
 
 #pragma once
 
-#define CLK 168000000
+#define CLK 80000000
 #define IO_PA2
 
 #define IFTIM TIM2
 #define IFTIM_XRES 2
-#define IFTIM_ICFL 256
-#define IFTIM_ICMR TIM2_CCMR1
-#define IFTIM_ICM1 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_32_N_8)
-#define IFTIM_ICM2 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_16_N_8)
-#define IFTIM_ICM3 (TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8)
-#define IFTIM_ICIE TIM_DIER_CC1IE
-#define IFTIM_ICR TIM2_CCR1
-#define IFTIM_OCR TIM2_CCR3
+#define IFTIM_ICFL 128
+#define IFTIM_ICMR TIM2_CCMR2
+#define IFTIM_ICM1 (TIM_CCMR2_CC4S_IN_TI4 | TIM_CCMR2_IC4F_DTF_DIV_16_N_8)
+#define IFTIM_ICM2 (TIM_CCMR2_CC4S_IN_TI4 | TIM_CCMR2_IC4F_DTF_DIV_8_N_8)
+#define IFTIM_ICM3 (TIM_CCMR2_CC4S_IN_TI4 | TIM_CCMR2_IC4F_DTF_DIV_4_N_8)
+#define IFTIM_ICIE TIM_DIER_CC4IE
+#define IFTIM_ICR TIM2_CCR4
+#define IFTIM_OCR TIM2_CCR1
 #define iftim_isr tim2_isr
 
 #define IOTIM TIM15
 #define IOTIM_IDR (GPIOA_IDR & 0x4) // A2
-#define IOTIM_DMA 1
+#define IOTIM_DMA 5
 #define iotim_isr tim1_brk_tim15_isr
-#define iodma_isr dma1_channel1_isr
+#define iodma_isr dma1_channel5_isr
 
-#define USART1_RX_DMA 2
-#define USART1_TX_DMA 3
-#define usart1_tx_dma_isr dma1_channel3_isr
+#define USART1_DMA_BASE DMA2_BASE
+#define USART1_RX_DMA 7
+#define USART1_TX_DMA 6
+#define usart1_tx_dma_isr dma2_channel6_isr
 
-#define USART2_RX_DMA 1
-#define USART2_TX_DMA 6
+#define USART2_RX_DMA 6
+#define USART2_TX_DMA 7
 
-#define tim1_com_isr tim1_trg_tim17_isr
+#define tim1_com_isr tim1_trg_com_tim17_isr
 
-#define TIM1_CCR5 MMIO32(TIM1_BASE + 0x48)
+#ifdef USE_COMP2
+#define SW_BLANKING
+#else
+#define TIM1_CCR5 MMIO32(TIM1_BASE + 0x58)
 #define TIM_CCER_CC5E 0x10000
+#endif

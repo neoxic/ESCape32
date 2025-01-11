@@ -49,15 +49,6 @@
 #define IO_ANALOG 0
 #endif
 
-#ifdef ANALOG_CHAN
-#define AIN_CHAN ANALOG_CHAN
-#elif defined IO_PA6
-#define AIN_CHAN 6
-#define AIN_LAST
-#else
-#define AIN_CHAN 2
-#endif
-
 #define GPIO(port, name) _GPIO(port, name)
 #define _GPIO(port, name) __GPIO(port, name)
 #define __GPIO(port, name) GPIO##port##_##name

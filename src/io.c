@@ -40,7 +40,6 @@ static void sbusdma(void);
 static void crsfirq(void);
 static char rxlen;
 #endif
-
 static Func ioirq, iodma;
 static char dshotinv, iobuf[1024];
 static uint16_t dshotarr1, dshotarr2, dshotbuf1[32], dshotbuf2[23] = {-1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, 0, -1, -1, -1};

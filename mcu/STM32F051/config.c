@@ -29,11 +29,15 @@
 #define SENS_CHAN 0x48
 #endif
 
+#ifndef ANALOG_CHAN
+#define ANALOG_CHAN 0x2 // ADC_IN2 (PA2)
+#endif
+
 #ifdef TEMP_CHAN
 #define TEMP_SHIFT 12
 #else
 #define TEMP_SHIFT 0
-#define TEMP_CHAN 0x10000 // CH16 (temp)
+#define TEMP_CHAN 0x10000 // ADC_IN16 (temp)
 #define TEMP_FUNC(x) (((x) / 3300 - ST_TSENSE_CAL1_30C) * 320 / (ST_TSENSE_CAL2_110C - ST_TSENSE_CAL1_30C) + 120)
 #endif
 
@@ -103,10 +107,10 @@ void init(void) {
 	ADC1_CFGR1 = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTEN_RISING_EDGE;
 	ADC1_SMPR = ADC_SMPR_SMP_239DOT5; // Sampling time ~17us @ HSI14
 	ADC1_CCR = ADC_CCR_VREFEN | ADC_CCR_TSEN;
-	ADC1_CHSELR = SENS_CHAN | TEMP_CHAN | 0x20000; // CH17 (vref)
+	ADC1_CHSELR = SENS_CHAN | TEMP_CHAN | 0x20000; // ADC_IN17 (vref)
 	len = SENS_CNT + 2;
 	if (IO_ANALOG) {
-		ADC1_CHSELR |= 1 << AIN_CHAN;
+		ADC1_CHSELR |= 1 << ANALOG_CHAN;
 		++len;
 		ain = 1;
 	}
@@ -173,7 +177,7 @@ void dma1_channel1_isr(void) {
 	DMA1_IFCR = DMA_IFCR_CTCIF(1);
 	DMA1_CCR(1) = 0;
 	int i = 0, u = 0, v = 0, c = 0, a = 0;
-#ifndef AIN_LAST
+#ifndef ANALOG_LAST
 	if (ain) a = buf[i++];
 #endif
 #ifdef SENS_SWAP
@@ -190,7 +194,7 @@ void dma1_channel1_isr(void) {
 #if SENS_CNT >= 3
 	u = buf[i++];
 #endif
-#ifdef AIN_LAST
+#ifdef ANALOG_LAST
 	if (ain) a = buf[i++];
 #endif
 	int r = ST_VREFINT_CAL * 3300 / buf[i + 1];

@@ -18,7 +18,6 @@
 #pragma once
 
 #define CLK 64000000
-#define XTIM TIM6
 
 #define IFTIM TIM2
 #define IFTIM_XRES 2

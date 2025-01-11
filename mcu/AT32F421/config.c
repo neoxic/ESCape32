@@ -27,9 +27,13 @@
 #define SENS_CHAN 0x66
 #endif
 
+#ifndef ANALOG_CHAN
+#define ANALOG_CHAN 0x2 // ADC_IN2 (PA2)
+#endif
+
 #ifndef TEMP_CHAN
-#define TEMP_CHAN 0x10 // CH16 (temp)
-#define TEMP_FUNC(x) (((x) - 1280) * 40 / 43 + 100)
+#define TEMP_CHAN 0x10 // ADC_IN16 (temp)
+#define TEMP_FUNC(x) ((((x) - 1280) * 3800 >> 12) + 100)
 #endif
 
 #define ADC1_BASE ADC_BASE
@@ -54,6 +58,7 @@ void init(void) {
 	RCC_CFGR &= ~RCC_CFGR_SW_PLL;
 	while (RCC_CFGR & RCC_CFGR_SWS_PLL);
 	RCC_CR &= ~RCC_CR_PLLON;
+	while (RCC_CR & RCC_CR_PLLRDY);
 	FLASH_ACR = 0x13; // LATENCY=3WS, PFTEN
 	RCC_CFGR = 0x2034c000; // ADCDIV=011 (PCLK/8), PLLMUL=011101 (x30)
 	RCC_CR |= RCC_CR_PLLON;
@@ -98,7 +103,6 @@ void init(void) {
 
 	ADC1_CR2 = ADC_CR2_ADON | ADC_CR2_TSVREFE;
 	TIM6_ARR = CLK_MHZ * 3 - 1;
-	TIM6_SR = ~TIM_SR_UIF;
 	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 3us (RM 18.4.2.1)
 	ADC1_CR2 |= ADC_CR2_CAL;
@@ -109,10 +113,10 @@ void init(void) {
 	ADC1_SQR3 = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		ADC1_SQR3 |= AIN_CHAN << (len++ * 5);
+		ADC1_SQR3 |= ANALOG_CHAN << (len++ * 5);
 		ain = 1;
 	}
-	ADC1_SQR3 |= (TEMP_CHAN | 0x220) << (len * 5); // CH17 (vref)
+	ADC1_SQR3 |= (TEMP_CHAN | 0x220) << (len * 5); // ADC_IN17 (vref)
 	len += 2;
 	ADC1_SQR1 = (len - 1) << ADC_SQR1_L_LSB;
 #ifndef LED_WS2812

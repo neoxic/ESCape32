@@ -17,8 +17,8 @@
 
 #include "common.h"
 
-#define REVISION 12
-#define REVPATCH 6
+#define REVISION 13
+#define REVPATCH 0
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -85,12 +85,12 @@ static int hall;
 static void error(void) {
 	ledctl(1); // Indicate error
 	TIM1_EGR = TIM_EGR_BG;
-	TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
-	TIM_ARR(XTIM) = 9999;
-	TIM_EGR(XTIM) = TIM_EGR_UG;
-	TIM_SR(XTIM) = ~TIM_SR_UIF;
-	TIM_CR1(XTIM) = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM_CR1(XTIM) & TIM_CR1_CEN); // Wait for 1s
+	TIM6_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
+	TIM6_ARR = 9999;
+	TIM6_EGR = TIM_EGR_UG;
+	TIM6_SR = ~TIM_SR_UIF;
+	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 1s
 	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
 	for (;;); // Never return
 }
@@ -185,7 +185,7 @@ static void nextstep(void) {
 	int p = x & m; // Positive phase
 	int n = ~x & m; // Negative phase
 	int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 	int m2 = TIM_CCMR2_OC3PE;
 	int er = TIM_CCER_CC5E;
 #else
@@ -277,7 +277,7 @@ static void nextstep(void) {
 		val = 1000 << IFTIM_XRES;
 		cnt = 0;
 	} else if (++cnt == 6) {
-		if ((val > ival ? val - ival : ival - val) > ival >> 1) { // Probably desync
+		if (abs(val - ival) > ival >> 1) { // Probably desync
 			sync = 0;
 			fast = 0;
 			ival = 5000 << IFTIM_XRES;
@@ -287,7 +287,7 @@ static void nextstep(void) {
 		cnt = 0;
 	}
 	if (ertm < 100) { // 600K+ ERPM
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 		TIM1_CCR5 = 0;
 #else
 		TIM1_CCR4 = 0;
@@ -295,7 +295,7 @@ static void nextstep(void) {
 		IFTIM_ICMR = IFTIM_ICM3;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 	} else if (ertm < 200) { // 300K+ ERPM
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 		TIM1_CCR5 = 0;
 #else
 		TIM1_CCR4 = 0;
@@ -303,7 +303,7 @@ static void nextstep(void) {
 		IFTIM_ICMR = IFTIM_ICM2;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 	} else if (ertm < 1000) { // 60K+ ERPM
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 		TIM1_CCR5 = 0;
 #else
 		TIM1_CCR4 = 0;
@@ -311,7 +311,7 @@ static void nextstep(void) {
 		IFTIM_ICMR = IFTIM_ICM1;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 	} else if (ertm < 2000) { // 30K+ ERPM
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 		TIM1_CCR5 = 0;
 #else
 		TIM1_CCR4 = 0;
@@ -319,7 +319,7 @@ static void nextstep(void) {
 		IFTIM_ICMR = IFTIM_ICM1;
 		TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS | TIM_CR1_CKD_CK_INT_MUL_2;
 	} else { // Minimum PWM frequency
-#ifdef STM32G4
+#ifdef TIM1_CCR5
 		TIM1_CCR5 = IFTIM_ICFL << 2;
 #else
 		TIM1_CCR4 = IFTIM_ICFL << 2;
@@ -431,7 +431,7 @@ void tim3_isr(void) { // Any change on Hall sensor inputs
 #endif
 
 void adcdata(int t, int u, int v, int c, int a) {
-	static int z = 3300, st = -1, su = -1, sv = -1, sc = -1, sa = -1;
+	static int z = 3300, i, q, st = -1, su = -1, sv = -1, sc = -1, sa = -1;
 	if ((c -= z) >= 0) ready = 1;
 	else {
 		if (!ready) z += c >> 1;
@@ -439,8 +439,13 @@ void adcdata(int t, int u, int v, int c, int a) {
 	}
 	temp1 = max((t = smooth(&st, t, 10)) >> 2, 0); // C
 	temp2 = max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0); // C
-	volt = smooth(&sv, v * VOLT_MUL / 1000, 7); // V/100
-	curr = smooth(&sc, c * CURR_MUL / 10, 4); // A/100
+	volt = smooth(&sv, v * VOLT_MUL * 131 >> 17, 7); // V/100
+	curr = smooth(&sc, c * CURR_MUL * 205 >> 11, 4); // A/100
+	i += curr; // Current integral
+	if (!(tickms & 0x3ff)) {
+		csum = (q += i >> 10) * 91 >> 15; // mAh
+		i = 0;
+	}
 	if (cfg.prot_temp) { // Temperature protection
 		int x = -(cfg.prot_temp << 2);
 		switch (cfg.prot_sens) {
@@ -476,7 +481,7 @@ void delay(int ms, Func f) {
 }
 
 void pend_sv_handler(void) {
-	static int i, n, q, a = -1;
+	static int a = -1;
 	if (telreq && !telmode) { // Telemetry request
 		kisstelem();
 		telreq = 0;
@@ -486,15 +491,10 @@ void pend_sv_handler(void) {
 	if (!(tickms & 31)) autotelem(); // Telemetry every 32ms
 	int b = cfg.led ? cfg.led : led;
 	if (a != b) ledctl(a = b); // Update LED
-	i += curr;
-	if (++n < 1000) return; // 1ms -> 1s
-	csum = (q += i / 1000) / 360; // mAh
-	i = 0;
-	n = 0;
 }
 
 static void delayf(void) {
-	TIM_EGR(XTIM) = TIM_EGR_UG; // Reset arming timeout
+	TIM6_EGR = TIM_EGR_UG; // Reset arming timeout
 }
 
 static void beep(void) {
@@ -581,21 +581,21 @@ void main(void) {
 	}
 	if (cfg.arm || (csr & RCC_CSR_WWDGRSTF)) { // Arming required
 	rearm:
-		TIM_PSC(XTIM) = CLK_KHZ / 10 - 1; // 0.1ms resolution
-		TIM_ARR(XTIM) = 2499; // 250ms
-		TIM_CR1(XTIM) = TIM_CR1_URS;
-		TIM_EGR(XTIM) = TIM_EGR_UG;
-		TIM_CR1(XTIM) = TIM_CR1_CEN | TIM_CR1_URS;
-		TIM_SR(XTIM) = ~TIM_SR_UIF;
+		TIM6_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
+		TIM6_ARR = 2499; // 250ms
+		TIM6_CR1 = TIM_CR1_URS;
+		TIM6_EGR = TIM_EGR_UG;
+		TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_URS;
+		TIM6_SR = ~TIM_SR_UIF;
 		throt = 1;
-		while (!(TIM_SR(XTIM) & TIM_SR_UIF)) { // Wait for 250ms zero throttle
+		while (!(TIM6_SR & TIM_SR_UIF)) { // Wait for 250ms zero throttle
 			__WFI();
 			beep();
 			if (!throt) continue;
-			TIM_EGR(XTIM) = TIM_EGR_UG;
+			TIM6_EGR = TIM_EGR_UG;
 		}
 		throt = 0;
-		TIM_CR1(XTIM) = 0;
+		TIM6_CR1 = 0;
 		playmusic(hall ? "G_GC" : "GC", cfg.volume);
 	}
 #endif

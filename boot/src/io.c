@@ -34,7 +34,6 @@ void initio(void) {
 	GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
 	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 	TIM1_ARR = CLK_CNT(20000) - 1;
-	TIM1_SR = ~TIM_SR_UIF;
 	TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 	while (TIM1_CR1 & TIM_CR1_CEN) { // Wait for 50us high level on A15
 		if (!(GPIOA_IDR & 0x8000)) { // A15 low

@@ -20,7 +20,6 @@
 #define CLK 72000000
 #define SW_BLANKING
 #define IO_PA2
-#define XTIM TIM6
 
 #define IFTIM TIM3
 #define IFTIM_XRES 0

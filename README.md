@@ -47,7 +47,7 @@ Use `LIBOPENCM3_DIR` to specify a path to LibOpenCM3 if it is not in the system 
 
 ```
 git clone https://github.com/libopencm3/libopencm3.git
-make -C libopencm3 TARGETS='stm32/f0 stm32/g0 stm32/g4'
+make -C libopencm3 TARGETS='stm32/f0 stm32/g0 stm32/g4 stm32/l4'
 cmake -B build -D LIBOPENCM3_DIR=libopencm3
 ```
 

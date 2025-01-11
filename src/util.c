@@ -42,6 +42,11 @@
 #elif LED_MAP == 0xB8
 #define LED1_PORT B
 #define LED1_PIN 8
+#elif LED_MAP == 0xF2AF
+#define LED1_PORT F
+#define LED1_PIN 2
+#define LED2_PORT A
+#define LED2_PIN 15
 #elif LED_MAP == 0xAFB3B4
 #define LED1_PORT A
 #define LED1_PIN 15
@@ -91,7 +96,7 @@
 #define LED3_OD
 #endif
 
-#ifdef STM32G4
+#ifndef FLASH_CR_STRT
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
 
@@ -377,18 +382,18 @@ int savecfg(void) {
 	FLASH_KEYR = FLASH_KEYR_KEY2;
 	FLASH_SR = -1; // Clear errors
 	FLASH_CR = FLASH_CR_PER;
-#if defined STM32G0 || defined STM32G4
-	FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((uint32_t)(_cfg - _boot) >> 11) << FLASH_CR_PNB_SHIFT; // Erase page
-#else
+#ifdef STM32F0
 	FLASH_AR = (uint32_t)_cfg;
 	FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT; // Erase page
+#else
+	FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((uint32_t)(_cfg - _boot) >> 11) << FLASH_CR_PNB_SHIFT; // Erase page
 #endif
 	while (FLASH_SR & FLASH_SR_BSY);
 	FLASH_CR = FLASH_CR_PG;
-#if defined STM32G0 || defined STM32G4
-#define T uint32_t
-#else
+#ifdef STM32F0
 #define T uint16_t
+#else
+#define T uint32_t
 #endif
 	T *dst = (T *)_cfg;
 	T *src = (T *)_cfg_start;
@@ -396,17 +401,17 @@ int savecfg(void) {
 #undef T
 	while (src < end) { // Write data
 		*dst++ = *src++;
-#if defined STM32G0 || defined STM32G4
+#ifndef STM32F0
 		*dst++ = *src++;
 #endif
 		while (FLASH_SR & FLASH_SR_BSY);
 	}
 	FLASH_CR = FLASH_CR_LOCK;
 	__enable_irq();
-#if defined STM32G0 || defined STM32G4
-	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return 0;
-#else
+#ifdef STM32F0
 	if (FLASH_SR & (FLASH_SR_PGERR | FLASH_SR_WRPRTERR)) return 0;
+#else
+	if (FLASH_SR & (FLASH_SR_PROGERR | FLASH_SR_WRPERR)) return 0;
 #endif
 	return !memcmp(_cfg, _cfg_start, _cfg_end - _cfg_start);
 }
@@ -438,7 +443,7 @@ void resetcom(void) {
 }
 
 static void delayf(void) {
-	TIM_EGR(XTIM) = TIM_EGR_UG; // Reset arming timeout
+	TIM6_EGR = TIM_EGR_UG; // Reset arming timeout
 	if (!(TIM1_SR & TIM_SR_UIF)) return;
 	TIM1_SR = ~TIM_SR_UIF;
 	int a = TIM1_CCR1;

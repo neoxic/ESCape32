@@ -17,6 +17,10 @@
 
 #include "common.h"
 
+#ifndef USART1_DMA_BASE
+#define USART1_DMA_BASE DMA1_BASE
+#endif
+
 #ifdef AT32F4
 #define USART1_TDR USART1_DR
 #define USART1_RDR USART1_DR
@@ -24,9 +28,7 @@
 
 static int ibusfunc(int len);
 static int sportfunc(int len);
-
 static int (*iofunc)(int len);
-
 static char iobuf[16];
 
 void inittelem(void) {
@@ -54,10 +56,10 @@ void inittelem(void) {
 		USART1_CR3 = USART_CR3_HDSEL | USART_CR3_DMAT;
 		USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
 	}
-	DMA1_CPAR(USART1_RX_DMA) = (uint32_t)&USART1_RDR;
-	DMA1_CMAR(USART1_RX_DMA) = (uint32_t)iobuf;
-	DMA1_CPAR(USART1_TX_DMA) = (uint32_t)&USART1_TDR;
-	DMA1_CMAR(USART1_TX_DMA) = (uint32_t)iobuf;
+	DMA_CPAR(USART1_DMA_BASE, USART1_RX_DMA) = (uint32_t)&USART1_RDR;
+	DMA_CMAR(USART1_DMA_BASE, USART1_RX_DMA) = (uint32_t)iobuf;
+	DMA_CPAR(USART1_DMA_BASE, USART1_TX_DMA) = (uint32_t)&USART1_TDR;
+	DMA_CMAR(USART1_DMA_BASE, USART1_TX_DMA) = (uint32_t)iobuf;
 }
 
 void usart1_isr(void) {
@@ -73,7 +75,7 @@ void usart1_isr(void) {
 		USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE;
 		return;
 	}
-	int len = iofunc(sizeof iobuf - DMA1_CNDTR(USART1_RX_DMA));
+	int len = iofunc(sizeof iobuf - DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA));
 	if (len) {
 #ifdef AT32F4
 		USART1_SR = ~USART_SR_TC;
@@ -81,21 +83,21 @@ void usart1_isr(void) {
 		USART1_ICR = USART_ICR_TCCF;
 #endif
 		USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_TCIE;
-		DMA1_CCR(USART1_TX_DMA) = 0;
-		DMA1_CNDTR(USART1_TX_DMA) = len;
-		DMA1_CCR(USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+		DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = 0;
+		DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = len;
+		DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 		return;
 	}
 reading:
 	USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
-	DMA1_CCR(USART1_RX_DMA) = 0;
-	DMA1_CNDTR(USART1_RX_DMA) = sizeof iobuf;
-	DMA1_CCR(USART1_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+	DMA_CCR(USART1_DMA_BASE, USART1_RX_DMA) = 0;
+	DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA) = sizeof iobuf;
+	DMA_CCR(USART1_DMA_BASE, USART1_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
 void usart1_tx_dma_isr(void) {
-	DMA1_IFCR = DMA_IFCR_CTCIF(USART1_TX_DMA);
-	DMA1_CCR(USART1_TX_DMA) = 0;
+	DMA_IFCR(USART1_DMA_BASE) = DMA_IFCR_CTCIF(USART1_TX_DMA);
+	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = 0;
 }
 
 static int ibusresp(char a, int x) {
@@ -168,7 +170,7 @@ static int sportfunc(int len) {
 		case 0: return sportresp(t, temp1);
 		case 1: return sportresp(t, temp2);
 		case 2: return sportresp(t, volt);
-		case 3: return sportresp(t, curr / 10);
+		case 3: return sportresp(t, curr * 205 >> 11);
 		case 4: return sportresp(t, csum);
 		case 5: return sportresp(t, erpm / (cfg.telem_poles >> 1));
 	}
@@ -176,8 +178,8 @@ static int sportfunc(int len) {
 }
 
 void kisstelem(void) {
-	if (DMA1_CCR(USART1_TX_DMA) & DMA_CCR_EN) return;
-	int r = erpm / 100;
+	if (DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) & DMA_CCR_EN) return;
+	int r = erpm * 41 >> 12;
 	iobuf[0] = temp1;
 	iobuf[1] = volt >> 8;
 	iobuf[2] = volt;
@@ -188,14 +190,14 @@ void kisstelem(void) {
 	iobuf[7] = r >> 8;
 	iobuf[8] = r;
 	iobuf[9] = crc8(iobuf, 9);
-	DMA1_CNDTR(USART1_TX_DMA) = 10;
-	DMA1_CCR(USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+	DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = 10;
+	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
 static void crsftelem(void) {
-	if (DMA1_CCR(USART1_TX_DMA) & DMA_CCR_EN) return;
-	int v = volt / 10;
-	int c = curr / 10;
+	if (DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) & DMA_CCR_EN) return;
+	int v = volt * 205 >> 11;
+	int c = curr * 205 >> 11;
 	iobuf[0] = 0xc8;
 	iobuf[1] = 0x0a;
 	iobuf[2] = 0x08;
@@ -208,8 +210,8 @@ static void crsftelem(void) {
 	iobuf[9] = csum;
 	iobuf[10] = 0;
 	iobuf[11] = crc8dvbs2(iobuf + 2, 9);
-	DMA1_CNDTR(USART1_TX_DMA) = 12;
-	DMA1_CCR(USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
+	DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = 12;
+	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
 void autotelem(void) {
@@ -232,10 +234,10 @@ void autotelem(void) {
 			x = 0x800 | (temp2 & 0xff); // Motor temperature (C)
 			break;
 		case 2:
-			x = 0x400 | ((volt / 25) & 0xff); // Voltage (V/4)
+			x = 0x400 | ((volt * 41 >> 10) & 0xff); // Voltage (V/4)
 			break;
 		case 3:
-			x = 0x600 | ((curr / 100) & 0xff); // Current (A)
+			x = 0x600 | ((curr * 41 >> 12) & 0xff); // Current (A)
 			n = 0;
 			break;
 	}

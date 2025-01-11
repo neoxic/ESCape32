@@ -25,15 +25,13 @@
 #define SENS_CHAN 0xca
 #elif SENS_MAP == 0xBFA6 // B15 (volt), A6 (curr)
 #define SENS_CHAN 0x3c3
-#elif SENS_MAP == 0xBBBFA6 // B11 (temp), B15 (volt), A6 (curr)
-#define SENS_CHAN 0xe3c3
 #endif
 
 #ifdef TEMP_CHAN
 #define TEMP_SHIFT 12
 #else
 #define TEMP_SHIFT 0
-#define TEMP_CHAN 0x10 // CH16 (temp)
+#define TEMP_CHAN 0x10 // ADC1_IN16 (temp)
 #define TEMP_FUNC(x) (((x) / 3000 - ST_TSENSE_CAL1_30C) * 400 / (ST_TSENSE_CAL2_130C - ST_TSENSE_CAL1_30C) + 120)
 #endif
 
@@ -73,17 +71,30 @@ void init(void) {
 	while (RCC_CR & RCC_CR_PLLRDY);
 #ifdef USE_HSE
 	if (!cfg.throt_cal) {
+		TIM6_PSC = 15; // 1us resolution @ HSI16
+		TIM6_ARR = 9999;
+		TIM6_EGR = TIM_EGR_UG;
+		TIM6_SR = ~TIM_SR_UIF;
+		TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 		RCC_CR |= RCC_CR_HSEON;
-		while (!(RCC_CR & RCC_CR_HSERDY));
+		while (!(RCC_CR & RCC_CR_HSERDY)) {
+			if (!(TIM6_CR1 & TIM_CR1_CEN)) { // Timeout 10ms
+				RCC_CR &= ~RCC_CR_HSEON;
+				goto skip;
+			}
+		}
 		RCC_PLLCFGR = RCC_PLLCFGR_PLLSRC_HSE | (336 / USE_HSE) << RCC_PLLCFGR_PLLN_SHIFT | RCC_PLLCFGR_PLLREN;
 	} else
+skip:
 #endif
 	RCC_PLLCFGR = RCC_PLLCFGR_PLLSRC_HSI16 | 21 << RCC_PLLCFGR_PLLN_SHIFT | RCC_PLLCFGR_PLLREN;
 	RCC_CR |= RCC_CR_PLLON;
 	while (!(RCC_CR & RCC_CR_PLLRDY));
 	RCC_CFGR = RCC_CFGR_SWx_PLL | RCC_CFGR_HPRE_DIV2 << RCC_CFGR_HPRE_SHIFT;
 	PWR_CR5 = 0; // R1MODE=0 (boost mode)
+	TIM6_PSC = 0;
 	TIM6_ARR = CLK_MHZ / 2 - 1;
+	TIM6_EGR = TIM_EGR_UG;
 	TIM6_SR = ~TIM_SR_UIF;
 	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
 	while (TIM6_CR1 & TIM_CR1_CEN); // Ensure 1us HCLK/2 transition period (RM 7.2.7)
@@ -158,11 +169,11 @@ void init(void) {
 	while (ADC_CR(ADC2) = ADC_CR_ADEN | ADC_CR_ADVREGEN, !(ADC_ISR(ADC2) & ADC_ISR_ADRDY));
 	ADC_CFGR1(ADC1) = ADC_CFGR1_DMAEN | ADC12_CFGR1_EXTSEL_TIM1_TRGO | ADC_CFGR1_EXTEN_RISING_EDGE;
 	ADC_CFGR1(ADC2) = ADC_CFGR1_DMAEN | ADC12_CFGR1_EXTSEL_TIM1_TRGO | ADC_CFGR1_EXTEN_RISING_EDGE;
-	ADC_SMPR1(ADC1) = -1; // Sampling time ~15us @ PCLK/4=42Mhz
+	ADC_SMPR1(ADC1) = -1; // Sampling time ~15us @ HCLK/4=42Mhz
 	ADC_SMPR1(ADC2) = -1;
 	ADC_SMPR2(ADC1) = -1;
 	ADC_SMPR2(ADC2) = -1;
-	int val1 = TEMP_CHAN | 0x480; // CH18 (vref)
+	int val1 = TEMP_CHAN | 0x480; // ADC1_IN18 (vref)
 	int val2 = SENS_CHAN;
 	len1 = 2;
 	len2 = SENS_CNT;
