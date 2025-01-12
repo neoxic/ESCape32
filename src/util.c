@@ -85,6 +85,12 @@
 #define LED3_INV
 #endif
 
+#ifdef LED_OD
+#define LED1_OD
+#define LED2_OD
+#define LED3_OD
+#endif
+
 #ifdef STM32G4
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
@@ -119,11 +125,17 @@ void initled(void) {
 #ifdef LED1_INV
 	GPIO(LED1_PORT, ODR) |= 1 << LED1_PIN;
 #endif
+#ifdef LED1_OD
+	GPIO(LED1_PORT, OTYPER) |= 1 << LED1_PIN;
+#endif
 	GPIO(LED1_PORT, MODER) &= ~(2 << LED1_PIN * 2);
 #endif
 #ifdef LED2_PORT
 #ifdef LED2_INV
 	GPIO(LED2_PORT, ODR) |= 1 << LED2_PIN;
+#endif
+#ifdef LED2_OD
+	GPIO(LED2_PORT, OTYPER) |= 1 << LED2_PIN;
 #endif
 	GPIO(LED2_PORT, MODER) &= ~(2 << LED2_PIN * 2);
 #endif
@@ -131,11 +143,17 @@ void initled(void) {
 #ifdef LED3_INV
 	GPIO(LED3_PORT, ODR) |= 1 << LED3_PIN;
 #endif
+#ifdef LED3_OD
+	GPIO(LED3_PORT, OTYPER) |= 1 << LED3_PIN;
+#endif
 	GPIO(LED3_PORT, MODER) &= ~(2 << LED3_PIN * 2);
 #endif
 #ifdef LED4_PORT
 #ifdef LED4_INV
 	GPIO(LED4_PORT, ODR) |= 1 << LED4_PIN;
+#endif
+#ifdef LED4_OD
+	GPIO(LED4_PORT, OTYPER) |= 1 << LED4_PIN;
 #endif
 	GPIO(LED4_PORT, MODER) &= ~(2 << LED4_PIN * 2);
 #endif
