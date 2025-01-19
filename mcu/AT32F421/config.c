@@ -160,7 +160,7 @@ void ledctl(int x) {
 void hsictl(int x) {
 	int cr = RCC_CR;
 	int tv = (cr & 0xfc) >> 2; // 6 bits
-	RCC_CR = (cr & ~0xfc) | ((tv + x) & 0x3f) << 2;
+	RCC_CR = (cr & ~0xfc) | clamp(tv + x, 0, 0x3f) << 2;
 }
 
 void compctl(int x) {

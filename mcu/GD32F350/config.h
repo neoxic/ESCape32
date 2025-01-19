@@ -18,6 +18,7 @@
 #pragma once
 
 #define CLK 104000000
+#define SW_BLANKING
 #define XTIM TIM6
 
 #define IFTIM TIM2

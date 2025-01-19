@@ -219,7 +219,7 @@ void ledctl(int x) {
 void hsictl(int x) {
 	int cr = RCC_ICSCR;
 	int tv = (cr & 0x7f000000) >> 24; // 7 bits
-	RCC_ICSCR = (cr & ~0x7f000000) | ((tv + x) & 0x7f) << 24;
+	RCC_ICSCR = (cr & ~0x7f000000) | clamp(tv + x, 0, 0x7f) << 24;
 }
 
 void compctl(int x) {

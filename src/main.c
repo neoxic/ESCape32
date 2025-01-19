@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 12
-#define REVPATCH 5
+#define REVPATCH 6
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -467,12 +467,12 @@ void sys_tick_handler(void) {
 	if (++tickms == tickmsv) tickmsf = 0;
 }
 
-void delay(int ms) {
+void delay(int ms, Func f) {
 	__disable_irq();
 	tickmsv = tickms + ms;
 	tickmsf = 1;
 	__enable_irq();
-	while (tickmsf) TIM_EGR(XTIM) = TIM_EGR_UG; // Reset arming timeout
+	while (tickmsf) f();
 }
 
 void pend_sv_handler(void) {
@@ -493,6 +493,10 @@ void pend_sv_handler(void) {
 	n = 0;
 }
 
+static void delayf(void) {
+	TIM_EGR(XTIM) = TIM_EGR_UG; // Reset arming timeout
+}
+
 static void beep(void) {
 	static const char *const beacons[] = {"EG", "FA", "GB", "AB#", "aDGE"};
 	static const char *const values[] = {"c6", "C2", "D2C2", "E2D2C2", "F#2E2D2C2", "G#A#G#A#G#2", "G#A#G#A#F#2G#2", "G#A#G#A#E2F#2G#2", "G#A#G#A#D2E2F#2G#2", "G#A#G#A#C2D2E2F#2G#2", 0};
@@ -504,7 +508,7 @@ static void beep(void) {
 	int i[10], n = 0, x = beepval, vol = max(cfg.volume, 25);
 	while (i[n++] = x % 10, x /= 10);
 	while (n--) {
-		if (x++) playmusic("_4", vol);
+		if (x++) delay(500, delayf);
 		playmusic(values[i[n]], vol);
 	}
 	beepval = -1;
@@ -571,7 +575,7 @@ void main(void) {
 		playmusic(cfg.music, cfg.volume);
 		if (cfg.prot_volt) { // Report the number of battery cells
 			beepval = cells;
-			delay(250);
+			delay(250, delayf);
 			beep();
 		}
 	}
@@ -740,7 +744,11 @@ void main(void) {
 			ertm = 100000000;
 			nextstep();
 			TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
+#ifdef SW_BLANKING
+			TIM1_DIER |= TIM_DIER_COMIE | TIM_DIER_UIE | TIM_DIER_CC4IE;
+#else
 			TIM1_DIER |= TIM_DIER_COMIE;
+#endif
 			TIM_ARR(IFTIM) = IFTIM_OCR = (1 << (IFTIM_XRES + 16)) - 1;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;
 			__enable_irq();
@@ -748,7 +756,11 @@ void main(void) {
 			boost = 0;
 		} else if (!running && step) { // Stop motor
 			__disable_irq();
+#ifdef SW_BLANKING
+			TIM1_DIER &= ~(TIM_DIER_COMIE | TIM_DIER_UIE | TIM_DIER_CC4IE);
+#else
 			TIM1_DIER &= ~TIM_DIER_COMIE;
+#endif
 			TIM_DIER(IFTIM) = 0;
 			TIM_ARR(IFTIM) = 0;
 			TIM_EGR(IFTIM) = TIM_EGR_UG;

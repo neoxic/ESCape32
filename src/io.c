@@ -41,9 +41,7 @@ static void crsfirq(void);
 static char rxlen;
 #endif
 
-static void (*ioirq)(void);
-static void (*iodma)(void);
-
+static Func ioirq, iodma;
 static char dshotinv, iobuf[1024];
 static uint16_t dshotarr1, dshotarr2, dshotbuf1[32], dshotbuf2[23] = {-1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, 0, -1, -1, -1};
 
@@ -173,18 +171,18 @@ static void entryirq(void) {
 		n = 0;
 		return;
 	}
-	int m = 3;
+	int m = 2;
 	while (t >= CLK_CNT(800000)) t >>= 1, --m;
 	if (d != m) {
 		d = m;
 		n = 1;
 		return;
 	}
-	if (m < 1 || n < 4) return;
+	if (m < 0 || n < 4) return;
 	ioirq = dshotirq;
 	iodma = dshotdma;
-	dshotarr1 = CLK_CNT(m * 150000) - 1;
-	dshotarr2 = CLK_CNT(m * 375000) - 1;
+	dshotarr1 = CLK_CNT(150000 << m) - 1;
+	dshotarr2 = CLK_CNT(375000 << m) - 1;
 	TIM_CCER(IOTIM) = 0;
 	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
@@ -195,26 +193,28 @@ static void entryirq(void) {
 	DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf1;
 }
 
-static void calibirq(void) { // Align pulse period to the nearest millisecond via HSI trimming within 6.25% margin
+static void calibirq(void) {
 	static int n, q, x, y;
-	if (!cfg.throt_cal) goto done;
 	int p = TIM_CCR1(IOTIM); // Pulse period
-	if (p < 2000) return; // Invalid signal
-	IWDG_KR = IWDG_KR_RESET;
-	q += p - ((p + 500) / 1000) * 1000; // Cumulative error
-	if (++n & 3) return;
-	if (q > x) { // Slow down
-		if ((q << 3) > p) goto done;
-		y = -q;
-		hsictl(-1);
-	} else if (q < y) { // Speed up
-		if ((q << 3) < -p) goto done;
-		x = -q;
-		hsictl(1);
-	} else goto done;
-	q = 0;
-	return;
-done:
+	if (cfg.throt_cal && // 50/100/125/200/250/333/500Hz servo PWM within 8% margin
+		((p < 20800 && p > 19200) || (p < 10400 && p > 9600) || (p < 8320 && p > 7680) ||
+		(p < 5200 && p > 4800) || (p < 4160 && p > 3840) || (p < 3120 && p > 2880) || (p < 2080 && p > 1920))) {
+		IWDG_KR = IWDG_KR_RESET;
+		q += p - ((p + 500) / 1000) * 1000; // Cumulative error
+		if (++n & 3) return;
+		if (q > x) { // Slow down
+			y = -q;
+			q = 0;
+			hsictl(-1);
+			return;
+		}
+		if (q < y) { // Speed up
+			x = -q;
+			q = 0;
+			hsictl(1);
+			return;
+		}
+	}
 	ioirq = servoirq;
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
 	TIM_CCER(IOTIM) = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC2P; // IC1 on rising edge on TI1, IC2 on falling edge on TI1

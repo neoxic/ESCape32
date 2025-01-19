@@ -114,6 +114,8 @@ typedef struct {
 	int Kp, Ki, Kd, Li, i, x;
 } PID;
 
+typedef void (*Func)(void);
+
 extern char _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _boot[], _vec[]; // Linker exports
 extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
@@ -134,7 +136,7 @@ void io_serial(void);
 void io_analog(void);
 void adctrig(void);
 void adcdata(int t, int u, int v, int c, int a);
-void delay(int ms);
+void delay(int ms, Func f);
 void kisstelem(void);
 void autotelem(void);
 int execcmd(char *buf);
