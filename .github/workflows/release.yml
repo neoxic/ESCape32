@@ -1,0 +1,52 @@
+name: Build Project
+
+on: 
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up environment
+      run: |
+        sudo apt update
+        sudo apt install -y cmake
+        sudo apt install -y gcc-arm-none-eabi
+        sudo apt install -y binutils-arm-none-eabi
+        sudo apt install -y libnewlib-arm-none-eabi
+
+    - name: Clone libopencm3 repository
+      run: git clone https://github.com/libopencm3/libopencm3.git
+
+    - name: Build libopencm3
+      run: make -C libopencm3 TARGETS='stm32/f0 stm32/g0 stm32/g4'
+
+    - name: Configure project with CMake
+      run: cmake -B build -D LIBOPENCM3_DIR=libopencm3
+
+    - name: Set install prefix
+      run: cmake -B build -D CMAKE_INSTALL_PREFIX=~/local
+
+    - name: Run CMake build
+      run: cmake -B build
+
+    - name: Build project
+      run: |
+        cd build
+        make
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-output
+        path: build/**
