@@ -1,0 +1,23 @@
+name: Build ESCape32
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: |
+        sudo apt update
+        sudo apt install -y cmake
+        sudo apt install -y gcc-arm-none-eabi
+        sudo apt install -y binutils-arm-none-eabi
+        sudo apt install -y libnewlib-arm-none-eabi
+        git clone https://github.com/libopencm3/libopencm3.git
+        make -C libopencm3 TARGETS='stm32/f0 stm32/g0 stm32/g4 stm32/l4'
+        cmake -B build -D LIBOPENCM3_DIR=libopencm3
+        cd build
+        make
+    - uses: actions/upload-artifact@v4
+      with:
+        name: escape32-build
+        path: build/**/*.bin
+        retention-days: 7
