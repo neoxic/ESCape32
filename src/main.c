@@ -563,12 +563,12 @@ void main(void) {
 	STK_RVR = CLK_KHZ / 16 - 1; // 16kHz
 	STK_CVR = 0;
 	STK_CSR = STK_CSR_ENABLE | STK_CSR_TICKINT | STK_CSR_CLKSOURCE_AHB;
+#ifndef ANALOG
 	int cells = cfg.prot_cells;
 #if SENS_CNT > 0
 	while (!ready) __WFI(); // Wait for sensors
 	if (!cells) cells = (volt + 439) / 440; // Assume maximum 4.4V per battery cell
 #endif
-#ifndef ANALOG
 	int csr = RCC_CSR;
 	RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
 	if (!(csr & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
@@ -773,8 +773,10 @@ void main(void) {
 		}
 		beep();
 		if (tick & 15) continue; // 16kHz -> 1kHz
+#ifndef ANALOG
 		if (cutoff < 3000) cutoff = volt < cfg.prot_volt * cells * 10 ? cutoff + 1 : 0;
 		else if (!running) goto rearm; // Low voltage cutoff after 3s
+#endif
 		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, hall > 4000 ? hall : ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
 		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
 #ifdef LED_STAT
