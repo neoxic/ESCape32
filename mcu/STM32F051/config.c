@@ -25,6 +25,8 @@
 #elif SENS_MAP == 0xA3A6 // A3 (volt), A6 (curr)
 #define SENS_CHAN 0x48
 #define SENS_SWAP
+#elif SENS_MAP == 0xA6A0 // A6 (volt), A0 (curr)
+#define SENS_CHAN 0x41
 #elif SENS_MAP == 0xA6A3 // A6 (volt), A3 (curr)
 #define SENS_CHAN 0x48
 #endif
@@ -42,6 +44,11 @@
 #endif
 
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
+#ifdef USE_COMP2
+#define COMP_SHIFT 16
+#else
+#define COMP_SHIFT 0
+#endif
 
 static char len, ain;
 static uint16_t buf[6];
@@ -132,7 +139,7 @@ void compctl(int x) {
 			break;
 	}
 	if (x & 4) cr |= 0x800; // Change polarity
-	COMP_CSR = cr;
+	COMP_CSR = cr << COMP_SHIFT;
 }
 
 void io_serial(void) {
@@ -163,14 +170,14 @@ void tim1_brk_up_trg_com_isr(void) {
 	int sr = TIM1_SR;
 	if (sr & TIM_SR_UIF) {
 		TIM1_SR = ~TIM_SR_UIF;
-		if (TIM1_CCR4) COMP_CSR &= ~0x700; // COMP_OUT off
+		if (TIM1_CCR4) COMP_CSR &= ~(0x700 << COMP_SHIFT); // COMP_OUT off
 	}
 	if (sr & TIM_SR_COMIF) tim1_com_isr();
 }
 
 void tim1_cc_isr(void) {
 	TIM1_SR = ~TIM_SR_CC4IF;
-	COMP_CSR |= 0x400; // COMP_OUT=TIM2_IC4
+	COMP_CSR |= 0x400 << COMP_SHIFT; // COMP_OUT=TIM2_IC4
 }
 
 void dma1_channel1_isr(void) {
