@@ -75,6 +75,6 @@ make flash-<target>
 Building on GitHub
 ------------------
 
-+ Fork the repository
-+ Go to _Actions_
-+ Run the _Build ESCape32_ workflow
++ Fork the repository.
++ Go to _Actions_.
++ Run the _Build ESCape32_ workflow.
