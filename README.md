@@ -17,6 +17,7 @@ Features
 + Temperature/voltage/current protection
 + Variable PWM frequency, active freewheeling
 + Customizable startup music
++ Propeller positioning feature to stop the propeller in a specific position
 
 
 Installation
@@ -78,3 +79,23 @@ Building on GitHub
 + Fork the repository
 + Go to _Actions_
 + Run the _Build ESCape32_ workflow
+
+
+Propeller Positioning Feature
+-----------------------------
+
+The propeller positioning feature allows the propeller to stop in a specific position in airplane mode to avoid damage during landing. This feature requires a dedicated position sensor to detect the desired propeller position.
+
+### Enabling the Propeller Positioning Feature
+
+To enable the propeller positioning feature, set the `propeller_positioning` configuration option to `1` in the `src/common.h` file.
+
+### Required Hardware
+
+The propeller positioning feature requires a dedicated position sensor that can be connected to a GPIO pin. The sensor should provide a signal when the desired propeller position is reached.
+
+### Using the Propeller Positioning Feature
+
+1. Connect the position sensor to a free GPIO pin on the ESC.
+2. Enable the propeller positioning feature in the configuration.
+3. The ESC firmware will use the position sensor to stop the propeller in the desired position when the airplane mode is activated.

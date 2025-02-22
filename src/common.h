@@ -99,6 +99,7 @@ typedef struct {
 	char beacon;
 	char bec;
 	char led;
+	char propeller_positioning; // P5dae
 } Cfg;
 
 typedef struct {
@@ -113,6 +114,7 @@ extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval;
 extern char analog, telreq, telmode, flipdir, beacon, dshotext;
+extern int propeller_position; // P82c0
 
 void init(void);
 void initio(void);
@@ -142,6 +144,8 @@ int savecfg(void);
 int resetcfg(void);
 void resetcom(void);
 int playmusic(const char *str, int vol);
+void set_propeller_position(int position); // P82c0
+int get_propeller_position(void); // P82c0
 
 static inline int min(int a, int b) {return a < b ? a : b;}
 static inline int max(int a, int b) {return a > b ? a : b;}

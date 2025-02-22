@@ -65,6 +65,7 @@ const Cfg cfgdata = {
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
 	.bec = BEC,                 // BEC voltage control [0..3]
 	.led = LED,                 // LED on/off bits [0..15]
+	.propeller_positioning = PROPELLER_POSITIONING, // Propeller positioning feature
 };
 
 __attribute__((__section__(".cfg")))
@@ -144,7 +145,7 @@ static void nextstep(void) {
 		else if (step == 181) GPIO(RPM_PORT, BSRR) = 1 << RPM_PIN;
 #endif
 		if (prep) return;
-		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
+		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_PWM1;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
 #ifdef PWM_ENABLE
 		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
