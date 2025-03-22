@@ -151,6 +151,12 @@
 #ifndef THROT_MODE
 #define THROT_MODE 0
 #endif
+#ifndef THROT_REV
+#define THROT_REV 0
+#endif
+#ifndef THROT_BRK
+#define THROT_BRK 100
+#endif
 #ifndef THROT_SET
 #define THROT_SET 0
 #endif

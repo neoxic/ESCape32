@@ -11,5 +11,6 @@ _boot = ORIGIN(boot);
 _cfg = ORIGIN(cfg);
 _rom = ORIGIN(rom);
 _ram = ORIGIN(ram);
+_eod = LOADADDR(.data) + SIZEOF(.data);
 
 INCLUDE cortex-m-generic.ld

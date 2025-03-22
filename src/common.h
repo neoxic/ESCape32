@@ -76,6 +76,8 @@ typedef struct {
 	char duty_drag;
 	char duty_lock;
 	char throt_mode;
+	char throt_rev;
+	char throt_brk;
 	char throt_set;
 	char throt_cal;
 	uint16_t throt_min;
@@ -107,7 +109,7 @@ typedef struct {
 
 typedef void (*Func)(void);
 
-extern char _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _boot[], _vec[]; // Linker exports
+extern char _boot[], _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _eod[], _vec[]; // Linker exports
 extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
@@ -130,7 +132,7 @@ void adcdata(int t, int u, int v, int c, int a);
 void delay(int ms, Func f);
 void kisstelem(void);
 void autotelem(void);
-int execcmd(char *buf);
+int execcmd(char *str);
 char crc8(const char *buf, int len);
 char crc8dvbs2(const char *buf, int len);
 int scale(int x, int a1, int a2, int b1, int b2);
@@ -142,6 +144,7 @@ int savecfg(void);
 int resetcfg(void);
 void resetcom(void);
 int playmusic(const char *str, int vol);
+void playsound(const char *buf, int vol);
 
 static inline int min(int a, int b) {return a < b ? a : b;}
 static inline int max(int a, int b) {return a > b ? a : b;}

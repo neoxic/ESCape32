@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 13
+#define REVISION 14
 #define REVPATCH 0
 
 const Cfg cfgdata = {
@@ -39,9 +39,11 @@ const Cfg cfgdata = {
 	.duty_spup = DUTY_SPUP,     // Maximum duty cycle during spin-up (%) [1..25]
 	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
 	.duty_rate = DUTY_RATE,     // Duty cycle slew rate (0.1%/ms) [1..100]
-	.duty_drag = DUTY_DRAG,     // Drag brake amount (%) [0..100]
+	.duty_drag = DUTY_DRAG,     // Drag brake power (%) [0..100]
 	.duty_lock = DUTY_LOCK,     // Active drag brake (motor lock)
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse, 3 - forward/brake)
+	.throt_rev = THROT_REV,     // Maximum reverse throttle (0 - 100%, 1 - 75%, 2 - 50%, 3 - 25%)
+	.throt_brk = THROT_BRK,     // Maximum brake power (%) [0..100]
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
 	.throt_cal = THROT_CAL,     // Automatic throttle calibration
 	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
@@ -82,25 +84,12 @@ static const int hall;
 #else
 static int hall;
 
-static void error(void) {
-	ledctl(1); // Indicate error
-	TIM1_EGR = TIM_EGR_BG;
-	TIM6_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
-	TIM6_ARR = 9999;
-	TIM6_EGR = TIM_EGR_UG;
-	TIM6_SR = ~TIM_SR_UIF;
-	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
-	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 1s
-	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
-	for (;;); // Never return
-}
-
 static int getcode(void) {
 	int x = -1;
 	for (int i = 0, j = 0; j < 4; ++j) {
 		int y = hallcode();
 		if (x == y) continue;
-		if (++i == 20) error(); // Unstable signal
+		if (++i == 20) hard_fault_handler(); // Unstable signal
 		x = y;
 		j = 0;
 	}
@@ -169,7 +158,7 @@ static void nextstep(void) {
 	static const char map[][2] = {{2, 4}, {4, 6}, {3, 5}, {6, 2}, {1, 3}, {5, 1}}; // Hall sensor code mapping
 	if (hall > 4000) {
 		int code = getcode();
-		if (code < 1 || code > 6) error(); // Invalid Hall sensor code
+		if (code < 1 || code > 6) hard_fault_handler(); // Invalid Hall sensor code
 		step = map[code - 1][!!reverse];
 	} else
 #endif
@@ -493,6 +482,19 @@ void pend_sv_handler(void) {
 	if (a != b) ledctl(a = b); // Update LED
 }
 
+void hard_fault_handler(void) {
+	ledctl(1); // Indicate error
+	TIM1_EGR = TIM_EGR_BG;
+	TIM6_PSC = CLK_KHZ / 10 - 1; // 0.1ms resolution
+	TIM6_ARR = 9999;
+	TIM6_EGR = TIM_EGR_UG;
+	TIM6_SR = ~TIM_SR_UIF;
+	TIM6_CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+	while (TIM6_CR1 & TIM_CR1_CEN); // Wait for 1s
+	WWDG_CR = WWDG_CR_WDGA; // Trigger watchdog reset
+	for (;;); // Never return
+}
+
 static void delayf(void) {
 	TIM6_EGR = TIM_EGR_UG; // Reset arming timeout
 }
@@ -572,7 +574,9 @@ void main(void) {
 	int csr = RCC_CSR;
 	RCC_CSR = RCC_CSR_RMVF; // Clear reset flags
 	if (!(csr & (RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF))) { // Power-on
-		playmusic(cfg.music, cfg.volume);
+		const char *str = cfg.music;
+		if (str[0] == '~') playsound(_eod, clamp(atoi(str + 1), 0, 100));
+		else playmusic(str, cfg.volume);
 		if (cfg.prot_volt) { // Report the number of battery cells
 			beepval = cells;
 			delay(250, delayf);
@@ -603,32 +607,13 @@ void main(void) {
 	PID bpid = {.Kp = 50, .Ki = 0, .Kd = 1000}; // Stall protection
 	PID cpid = {.Kp = 400, .Ki = 0, .Kd = 600}; // Overcurrent protection
 	for (int curduty = 0, running = 0, braking = 2, cutoff = 0, boost = 0, choke = 0, n = 0;;) {
-		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
-		__WFI();
 		int ccr, arr = CLK_KHZ / cfg.freq_min;
 		int input = cutoff == 3000 ? 0 : throt;
 		int range = cfg.sine_range * 20;
 		int delta = range ? 10 : 0;
 		int newduty = 0;
 		if (!running) curduty = 0;
-		if (input > 0) { // Forward
-			if (range + (sine ? delta : -delta) < input) newduty = scale(input, range + delta, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(input, 0, range - delta, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
-			reverse = cfg.revdir ^ flipdir;
-			running = 1;
-			braking = 0;
-		} else if (input < 0) { // Reverse
-			if ((mode == 2 && braking != 2) || mode == 3) { // Proportional brake
-				curduty = scale(-input, 0, 2000, cfg.duty_drag * 20, 2000);
-				running = 0;
-				braking = 1;
-				goto setduty;
-			}
-			if (range + (sine ? delta : -delta) < -input) newduty = scale(-input, range + delta, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
-			else sine = scale(-input, 0, range - delta, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
-			reverse = !cfg.revdir ^ flipdir;
-			running = 1;
-		} else { // Neutral
+		if (!input) { // Neutral
 			if (braking == 1) braking = 2; // Reverse after braking
 			if (lock) { // Active drag brake
 				curduty = min(cfg.duty_drag, 100 - cutback); // 60% cutback at 15C above prot_temp
@@ -641,7 +626,25 @@ void main(void) {
 				goto setduty;
 			}
 			boost = 0; // Coasting
+			goto calcduty;
 		}
+		if (input < 0) { // Reverse
+			if ((mode == 2 && braking != 2) || mode == 3) { // Proportional brake
+				curduty = scale(input, -2000, 0, cfg.throt_brk * 20, cfg.duty_drag * 20);
+				running = 0;
+				braking = 1;
+				goto setduty;
+			}
+			input = input * (cfg.throt_rev - 4) >> 2;
+			reverse = !cfg.revdir ^ flipdir;
+			running = 1;
+		} else { // Forward
+			reverse = cfg.revdir ^ flipdir;
+			running = 1;
+			braking = 0;
+		}
+		if (range + (sine ? delta : -delta) < input) newduty = scale(input, range + delta, 2000, cfg.duty_min * 20, cfg.duty_max * 20);
+		else sine = scale(input, 0, range - delta, 1000 << IFTIM_XRES, cfg.prot_stall ? (333333 << IFTIM_XRES) / cfg.prot_stall : 145 << IFTIM_XRES);
 		if (sine) { // Sine startup
 			if (!newduty) {
 				if (!ertm) goto skipduty;
@@ -671,6 +674,7 @@ void main(void) {
 			curduty = 0;
 			boost = 0;
 		}
+	calcduty:
 		if (brushed && step != reverse + 1) step = 0; // Change brushed direction
 		if ((newduty += boost - choke) < 0) newduty = 0;
 		if (ertm) { // Variable PWM frequency
@@ -736,7 +740,7 @@ void main(void) {
 				TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
 				step = reverse + 1;
 				ertm = 600; // 100K ERPM (freq_min/duty_spup/duty_ramp have no effect)
-				continue;
+				goto tick;
 			}
 			__disable_irq();
 			step = oldstep;
@@ -771,7 +775,9 @@ void main(void) {
 			erpm = 0;
 			__enable_irq();
 		}
-		beep();
+	tick:
+		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
+		__WFI();
 		if (tick & 15) continue; // 16kHz -> 1kHz
 #ifndef ANALOG
 		if (cutoff < 3000) cutoff = volt < cfg.prot_volt * cells * 10 ? cutoff + 1 : 0;
@@ -779,10 +785,11 @@ void main(void) {
 #endif
 		boost = cfg.prot_stall ? clamp(boost + (calcpid(&bpid, hall > 4000 ? hall : ival >> IFTIM_XRES, 20000000 / cfg.prot_stall - 800) >> 16), 0, 160) : 0; // Up to 8%
 		choke = cfg.prot_curr ? clamp(choke + (calcpid(&cpid, curr, cfg.prot_curr * 100) >> 10), 0, 2000) : 0;
+		beep();
 #ifdef LED_STAT
 		int x = 0;
 		if (running) {
-			if ((tickms << (input < 0) & 0x1ff) < (sine ? 0x180 : 0x100)) x = LED_CNT >= 2 ? 2 : 1;
+			if ((tickms << (throt < 0) & 0x1ff) < (sine ? 0x180 : 0x100)) x = LED_CNT >= 2 ? 2 : 1;
 		} else if (curduty) {
 			if ((tickms & (lock ? 0x2ff : 0x3ff)) < 0x40) x = LED_CNT >= 3 ? 4 : LED_CNT;
 		}

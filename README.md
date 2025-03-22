@@ -14,9 +14,9 @@ Features
 + DSHOT 3D mode, turtle mode, beacon, LED, programming
 + Sine startup mode, brushed mode, hybrid mode (sensored/sensorless)
 + Proportional brake, drag brake
-+ Temperature/voltage/current protection
++ Temperature/voltage/current/stall protection
 + Variable PWM frequency, active freewheeling
-+ Customizable startup music
++ Customizable startup music/sounds
 
 
 Installation

@@ -318,6 +318,8 @@ void checkcfg(void) {
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
 	cfg.duty_lock = cfg.duty_lock && cfg.damp && !cfg.brushed;
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : cfg.duty_lock ? 1 : 3);
+	cfg.throt_rev = clamp(cfg.throt_rev, 0, 3);
+	cfg.throt_brk = clamp(cfg.throt_brk, cfg.duty_drag, 100);
 	cfg.throt_set = clamp(cfg.throt_set, 0, cfg.arm ? 0 : 100);
 	cfg.throt_cal = !!cfg.throt_cal;
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
@@ -498,7 +500,7 @@ int playmusic(const char *str, int vol) {
 		if (a > 4) --a;
 		if (*str == '#') ++a, ++str;
 		TIM1_ARR = arr[a] >> (b + c); // Frequency
-		TIM1_CCR1 = vol; // Volume
+		TIM1_CCR1 = (DEAD_TIME + CLK_MHZ / 8 - 1) * 8 / CLK_MHZ + vol; // Volume
 		TIM1_CCR3 = 0;
 	update:
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
@@ -515,4 +517,49 @@ int playmusic(const char *str, int vol) {
 	resetcom();
 	lock = 0;
 	return !str[-1];
+}
+
+void playsound(const char *buf, int vol) { // AU file format, 8-bit linear PCM, mono
+	const uint32_t *hdr = (const uint32_t *)buf;
+	if (hdr[0] != 0x646e732e || hdr[3] != 0x2000000 || hdr[5] != 0x1000000 || !vol || ertm || lock) return;
+	lock = 1;
+	resetcom();
+#ifdef PWM_ENABLE
+	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
+	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
+	int er = TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
+#else
+	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_HIGH;
+	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
+	int er = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3E | TIM_CCER_CC3NE;
+#endif
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
+#endif
+#ifdef PWM_ENABLE
+	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+	TIM1_CCER = er;
+	TIM1_CCR1 = 0;
+	TIM1_CCR3 = 0;
+	TIM1_ARR = CLK_KHZ / 24 - 1;
+	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
+	TIM6_PSC = 0;
+	TIM6_ARR = CLK_CNT(__builtin_bswap32(hdr[4])) - 1;
+	TIM6_EGR = TIM_EGR_UG;
+	TIM6_CR1 = TIM_CR1_CEN;
+	buf += __builtin_bswap32(hdr[1]);
+	for (int len = __builtin_bswap32(hdr[2]);;) {
+		if (!(TIM6_SR & TIM_SR_UIF)) continue;
+		TIM6_SR = ~TIM_SR_UIF;
+		if (len-- <= 0) break;
+		int8_t x = *buf++;
+		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_UDIS;
+		TIM1_CCR1 = DEAD_TIME + ((x + 128) * vol * CLK_MHZ >> 13);
+		TIM1_CCR3 = DEAD_TIME + ((127 - x) * vol * CLK_MHZ >> 13);
+		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
+	}
+	TIM6_CR1 = 0;
+	resetcom();
+	lock = 0;
 }
