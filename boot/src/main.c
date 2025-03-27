@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 3
+#define REVISION 4
 
 #define CMD_PROBE  0
 #define CMD_INFO   1

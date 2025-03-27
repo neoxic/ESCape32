@@ -35,27 +35,32 @@ int write(char *dst, const char *src, int len) {
 	FLASH_KEYR = FLASH_KEYR_KEY2;
 	FLASH_SR = -1; // Clear errors
 	FLASH_CR = FLASH_CR_PER;
-	uint32_t ofs = ((uint32_t)dst + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1); // Align upward to page boundary
-	for (int pos = 0; pos < len; pos += PAGE_SIZE) { // Erase pages
+	uint32_t addr = ((uint32_t)dst + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+	uint32_t last = ((uint32_t)dst + len - 1) & ~(PAGE_SIZE - 1);
+	while (addr <= last) { // Erase pages
+		MMIO32(addr); // Invalid address triggers a hard fault
 #ifdef STM32F0
-		FLASH_AR = ofs + pos;
+		FLASH_AR = addr;
 		FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT;
 #else
-		FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((ofs + pos - (uint32_t)_rom) / PAGE_SIZE) << FLASH_CR_PNB_SHIFT;
+		FLASH_CR = FLASH_CR_PER | FLASH_CR_STRT | ((addr - (uint32_t)_rom) / PAGE_SIZE) << FLASH_CR_PNB_SHIFT;
 #endif
 		while (FLASH_SR & FLASH_SR_BSY);
+		addr += PAGE_SIZE;
 	}
 	FLASH_CR = FLASH_CR_PG;
 #ifdef STM32F0
 	for (int pos = 0; pos < len; pos += 2) { // Write half-words
 		*(uint16_t *)(dst + pos) = *(uint16_t *)(src + pos);
+		while (FLASH_SR & FLASH_SR_BSY);
+	}
 #else
 	for (int pos = 0; pos < len; pos += 8) { // Write double words
 		*(uint32_t *)(dst + pos) = *(uint32_t *)(src + pos);
 		*(uint32_t *)(dst + pos + 4) = *(uint32_t *)(src + pos + 4);
-#endif
 		while (FLASH_SR & FLASH_SR_BSY);
 	}
+#endif
 	FLASH_CR = FLASH_CR_LOCK;
 #ifdef STM32F0
 	if (FLASH_SR & (FLASH_SR_PGERR | FLASH_SR_WRPRTERR)) return 0;
