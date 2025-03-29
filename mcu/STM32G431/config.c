@@ -115,6 +115,11 @@ skip:
 	GPIOF_AFRL |= 0x6; // F0 (TIM1_CH3N)
 	GPIOF_MODER &= ~0x1; // F0 (TIM1_CH3N)
 #endif
+#ifdef HALL_MAP
+	RCC_APB1ENR1 |= RCC_APB1ENR1_TIM3EN;
+	GPIOB_AFRL |= 0x20000; // B4 (TIM3_CH1)
+	GPIOB_MODER &= ~0x100; // B4 (TIM3_CH1)
+#endif
 #ifndef ANALOG
 	RCC_APB2ENR |= RCC_APB2ENR_TIM15EN;
 	GPIOA_AFRL |= 0x900; // A2 (TIM15_CH1)
@@ -132,6 +137,7 @@ skip:
 	nvic_enable_irq(NVIC_TIM1_BRK_TIM15_IRQ);
 	nvic_enable_irq(NVIC_TIM1_TRG_TIM17_IRQ);
 	nvic_enable_irq(NVIC_TIM2_IRQ);
+	nvic_enable_irq(NVIC_TIM3_IRQ);
 	nvic_enable_irq(NVIC_USART1_IRQ);
 	nvic_enable_irq(NVIC_USART2_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);

@@ -18,6 +18,12 @@
 #include "common.h"
 
 #ifndef HALL_MAP
+#elif HALL_MAP == 0xAFB35
+#define HALL1_PORT A
+#define HALL1_PIN1 15
+#define HALL2_PORT B
+#define HALL2_PIN2 3
+#define HALL2_PIN3 5
 #elif HALL_MAP == 0xB358
 #define HALL_PORT B
 #define HALL_PIN1 3
@@ -104,8 +110,22 @@ static char lock;
 
 void initgpio(void) {
 #ifdef HALL_MAP
-	GPIO(HALL_PORT, PUPDR) |= (1 << HALL_PIN1 * 2) | (1 << HALL_PIN2 * 2) | (1 << HALL_PIN3 * 2);
-	GPIO(HALL_PORT, MODER) &= ~((3 << HALL_PIN1 * 2) | (3 << HALL_PIN2 * 2) | (3 << HALL_PIN3 * 2));
+#ifdef HALL1_PORT
+#ifdef HALL1_PIN2
+	GPIO(HALL1_PORT, PUPDR) |= 1 << HALL1_PIN1 * 2 | 1 << HALL1_PIN2 * 2;
+	GPIO(HALL2_PORT, PUPDR) |= 1 << HALL2_PIN3 * 2;
+	GPIO(HALL1_PORT, MODER) &= ~(3 << HALL1_PIN1 * 2 | 3 << HALL1_PIN2 * 2);
+	GPIO(HALL2_PORT, MODER) &= ~(3 << HALL2_PIN3 * 2);
+#else
+	GPIO(HALL1_PORT, PUPDR) |= 1 << HALL1_PIN1 * 2;
+	GPIO(HALL2_PORT, PUPDR) |= 1 << HALL2_PIN2 * 2 | 1 << HALL2_PIN3 * 2;
+	GPIO(HALL1_PORT, MODER) &= ~(3 << HALL1_PIN1 * 2);
+	GPIO(HALL2_PORT, MODER) &= ~(3 << HALL2_PIN2 * 2 | 3 << HALL2_PIN3 * 2);
+#endif
+#else
+	GPIO(HALL_PORT, PUPDR) |= 1 << HALL_PIN1 * 2 | 1 << HALL_PIN2 * 2 | 1 << HALL_PIN3 * 2;
+	GPIO(HALL_PORT, MODER) &= ~(3 << HALL_PIN1 * 2 | 3 << HALL_PIN2 * 2 | 3 << HALL_PIN3 * 2);
+#endif
 #endif
 #ifdef BEC_MAP
 	int x = cfg.bec;
@@ -168,8 +188,18 @@ void initled(void) {
 
 #ifdef HALL_MAP
 int hallcode(void) {
+#ifdef HALL1_PORT
+	int x1 = GPIO(HALL1_PORT, IDR);
+	int x2 = GPIO(HALL2_PORT, IDR);
+#ifdef HALL1_PIN2
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x1 & (1 << HALL1_PIN2)) >> (HALL1_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+#else
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) >> (HALL2_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+#endif
+#else
 	int x = GPIO(HALL_PORT, IDR);
 	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) >> (HALL_PIN2 - 1) | (x & (1 << HALL_PIN3)) >> (HALL_PIN3 - 2);
+#endif
 }
 #endif
 
