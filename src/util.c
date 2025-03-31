@@ -138,11 +138,11 @@ void initgpio(void) {
 	}
 #else
 	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) << (BEC_PIN2 - 1);
-	GPIO(BEC_PORT, MODER) &= ~((2 << BEC_PIN1 * 2) | (2 << BEC_PIN2 * 2));
+	GPIO(BEC_PORT, MODER) &= ~(2 << BEC_PIN1 * 2 | 2 << BEC_PIN2 * 2);
 #endif
 #endif
 #ifdef RPM_PIN
-	GPIO(RPM_PORT, MODER) = (GPIO(RPM_PORT, MODER) & ~(3 << RPM_PIN * 2)) | (1 << RPM_PIN * 2);
+	GPIO(RPM_PORT, MODER) = (GPIO(RPM_PORT, MODER) & ~(3 << RPM_PIN * 2)) | 1 << RPM_PIN * 2;
 #endif
 }
 
