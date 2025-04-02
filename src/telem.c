@@ -36,12 +36,17 @@ void inittelem(void) {
 	switch (telmode) {
 		case 2: // iBUS
 			iofunc = ibusfunc;
+#ifndef AT32F4
+			USART1_RTOR = 12; // TX delay ~100us
+			USART1_CR2 = USART_CR2_RTOEN;
+#endif
 			break;
 		case 3: // S.Port
 			iofunc = sportfunc;
 			USART1_BRR = CLK_CNT(57600);
 #ifndef AT32F4
-			USART1_CR2 = USART_CR2_RXINV | USART_CR2_TXINV;
+			USART1_RTOR = 26; // TX delay ~450us
+			USART1_CR2 = USART_CR2_RTOEN | USART_CR2_RXINV | USART_CR2_TXINV;
 			GPIOB_PUPDR = (GPIOB_PUPDR & ~0x3000) | 0x2000; // B6 (pull-down)
 #endif
 			break;
@@ -69,12 +74,8 @@ void usart1_isr(void) {
 	USART1_SR, USART1_DR; // Clear flags
 #else
 	USART1_RQR = USART_RQR_RXFRQ; // Clear RXNE
-	USART1_ICR = USART_ICR_IDLECF | USART_ICR_ORECF;
+	USART1_ICR = USART_ICR_IDLECF | USART_ICR_ORECF | USART_ICR_RTOCF;
 #endif
-	if (cr & USART_CR1_RXNEIE) { // Read until idle
-		USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE;
-		return;
-	}
 	int len = iofunc(sizeof iobuf - DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA));
 	if (len) {
 #ifdef AT32F4
@@ -89,7 +90,11 @@ void usart1_isr(void) {
 		return;
 	}
 reading:
-	USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
+#ifdef AT32F4
+	USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_IDLEIE;
+#else
+	USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RTOIE;
+#endif
 	DMA_CCR(USART1_DMA_BASE, USART1_RX_DMA) = 0;
 	DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA) = sizeof iobuf;
 	DMA_CCR(USART1_DMA_BASE, USART1_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;

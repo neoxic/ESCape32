@@ -106,7 +106,7 @@
 #define FLASH_CR_STRT FLASH_CR_START
 #endif
 
-static char lock;
+static char busy;
 
 void initgpio(void) {
 #ifdef HALL_MAP
@@ -408,7 +408,7 @@ void checkcfg(void) {
 }
 
 int savecfg(void) {
-	if (ertm || lock) return 0;
+	if (ertm || busy) return 0;
 	__disable_irq();
 	FLASH_KEYR = FLASH_KEYR_KEY1;
 	FLASH_KEYR = FLASH_KEYR_KEY2;
@@ -494,8 +494,8 @@ int playmusic(const char *str, int vol) {
 		tmp = 15000 / tmp;
 		str = end;
 	}
-	if (!vol || ertm || lock) return 0;
-	lock = 1;
+	if (!vol || ertm || busy) return 0;
+	busy = 1;
 	resetcom();
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
@@ -545,14 +545,14 @@ int playmusic(const char *str, int vol) {
 	TIM1_PSC = 0;
 	TIM1_ARR = CLK_KHZ / 24 - 1;
 	resetcom();
-	lock = 0;
+	busy = 0;
 	return !str[-1];
 }
 
 void playsound(const char *buf, int vol) { // AU file format, 8-bit linear PCM, mono
 	const uint32_t *hdr = (const uint32_t *)buf;
-	if (hdr[0] != 0x646e732e || hdr[3] != 0x2000000 || hdr[5] != 0x1000000 || !vol || ertm || lock) return;
-	lock = 1;
+	if (hdr[0] != 0x646e732e || hdr[3] != 0x2000000 || hdr[5] != 0x1000000 || !vol || ertm || busy) return;
+	busy = 1;
 	resetcom();
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
@@ -591,5 +591,5 @@ void playsound(const char *buf, int vol) { // AU file format, 8-bit linear PCM, 
 	}
 	TIM6_CR1 = 0;
 	resetcom();
-	lock = 0;
+	busy = 0;
 }
