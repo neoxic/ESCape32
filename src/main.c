@@ -398,9 +398,9 @@ void iftim_isr(void) { // BEMF zero-crossing
 }
 
 #ifdef HALL_MAP
-void hmtim_isr(void) { // Any change on Hall sensor inputs
-	if (TIM_SR(HMTIM) & TIM_SR_UIF) { // Timeout
-		TIM_SR(HMTIM) = ~TIM_SR_UIF;
+void tim3_isr(void) { // Any change on Hall sensor inputs
+	if (TIM3_SR & TIM_SR_UIF) { // Timeout
+		TIM3_SR = ~TIM_SR_UIF;
 		hall = 0x10000;
 		if (sine || !step) return;
 		sync = 0;
@@ -409,7 +409,7 @@ void hmtim_isr(void) { // Any change on Hall sensor inputs
 		ertm = 100000000;
 		return;
 	}
-	hall = (TIM_CCR1(HMTIM) + hall * 3) >> 2;
+	hall = (TIM3_CCR1 + hall * 3) >> 2;
 	if (hall < 5000 || sine || !step) return;
 	ival = hall << IFTIM_XRES;
 	TIM1_EGR = TIM_EGR_COMG;
@@ -549,15 +549,15 @@ void main(void) {
 	TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 #ifdef HALL_MAP
 	if (!brushed && getcode() != 7) { // Hybrid mode
-		TIM_SMCR(HMTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
-		TIM_CCMR1(HMTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
-		TIM_CCER(HMTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
-		TIM_DIER(HMTIM) = TIM_DIER_UIE | TIM_DIER_CC1IE;
-		TIM_PSC(HMTIM) = CLK_MHZ / 2 - 1; // 500ns resolution
-		TIM_ARR(HMTIM) = -1;
-		TIM_CR1(HMTIM) = TIM_CR1_URS;
-		TIM_EGR(HMTIM) = TIM_EGR_UG;
-		TIM_CR1(HMTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
+		TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+		TIM3_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
+		TIM3_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE;
+		TIM3_PSC = CLK_MHZ / 2 - 1; // 500ns resolution
+		TIM3_ARR = -1;
+		TIM3_CR1 = TIM_CR1_URS;
+		TIM3_EGR = TIM_EGR_UG;
+		TIM3_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 		hall = 0x10000;
 	}
 #endif
