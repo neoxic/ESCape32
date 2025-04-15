@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 14
-#define REVPATCH 1
+#define REVPATCH 2
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -520,7 +520,6 @@ void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
 	const int brushed = cfg.brushed;
-	const int mode = cfg.throt_mode;
 	lock = cfg.duty_lock;
 	throt = cfg.throt_set * 20;
 	telmode = cfg.telem_mode;
@@ -615,6 +614,10 @@ void main(void) {
 		if (!running) curduty = 0;
 		if (!input) { // Neutral
 			if (braking == 1) braking = 2; // Reverse after braking
+			if (lock != cfg.duty_lock && !brushed) { // Switch brake mode
+				lock = cfg.duty_lock;
+				if (!running) laststep();
+			}
 			if (lock) { // Active drag brake
 				curduty = min(cfg.duty_drag, 100 - cutback); // 60% cutback at 15C above prot_temp
 				running = 0;
@@ -629,7 +632,7 @@ void main(void) {
 			goto calcduty;
 		}
 		if (input < 0) { // Reverse
-			if ((mode == 2 && braking != 2) || mode == 3) { // Proportional brake
+			if ((cfg.throt_mode == 2 && braking != 2) || cfg.throt_mode == 3) { // Proportional brake
 				curduty = scale(input, -2000, 0, cfg.throt_brk * 20, cfg.duty_drag * 20);
 				running = 0;
 				braking = 1;

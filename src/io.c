@@ -67,7 +67,7 @@ static void entryirq(void) {
 			n = 0;
 			return;
 		}
-		if (++c < 8) return; // Wait for ~500ms before entering CLI
+		if (++c < 16) return; // Wait for ~1s before entering CLI
 		ioirq = cliirq;
 #ifdef IO_PA2
 		io_serial();
@@ -195,8 +195,8 @@ static void entryirq(void) {
 static void calibirq(void) {
 	static int n, q, x, y;
 	int p = TIM_CCR1(IOTIM); // Pulse period
-	if (cfg.throt_cal && // 50/100/125/200/250/333/500Hz servo PWM within 8% margin
-		((p < 20800 && p > 19200) || (p < 10400 && p > 9600) || (p < 8320 && p > 7680) ||
+	if (cfg.throt_cal && // 50/100/125/200/250/333/500Hz 11/22ms servo PWM within 8% margin
+		((p < 22880 && p > 21120) || (p < 20800 && p > 19200) || (p < 11440 && p > 10560) || (p < 10400 && p > 9600) || (p < 8320 && p > 7680) ||
 		(p < 5200 && p > 4800) || (p < 4160 && p > 3840) || (p < 3120 && p > 2880) || (p < 2080 && p > 1920))) {
 		IWDG_KR = IWDG_KR_RESET;
 		q += p - ((p + 500) / 1000) * 1000; // Cumulative error
