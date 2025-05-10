@@ -29,6 +29,11 @@
 #define HALL_PIN1 3
 #define HALL_PIN2 5
 #define HALL_PIN3 8
+#elif HALL_MAP == 0xB450
+#define HALL_PORT B
+#define HALL_PIN1 4
+#define HALL_PIN2 5
+#define HALL_PIN3 0
 #endif
 
 #ifndef BEC_MAP
@@ -109,18 +114,18 @@
 static char busy;
 
 void initgpio(void) {
-#ifdef HALL_MAP
+#if defined HALL_MAP && !defined USE_XOR
 #ifdef HALL1_PORT
-#ifdef HALL1_PIN2
-	GPIO(HALL1_PORT, PUPDR) |= 1 << HALL1_PIN1 * 2 | 1 << HALL1_PIN2 * 2;
-	GPIO(HALL2_PORT, PUPDR) |= 1 << HALL2_PIN3 * 2;
-	GPIO(HALL1_PORT, MODER) &= ~(3 << HALL1_PIN1 * 2 | 3 << HALL1_PIN2 * 2);
-	GPIO(HALL2_PORT, MODER) &= ~(3 << HALL2_PIN3 * 2);
-#else
+#ifdef HALL2_PIN2
 	GPIO(HALL1_PORT, PUPDR) |= 1 << HALL1_PIN1 * 2;
 	GPIO(HALL2_PORT, PUPDR) |= 1 << HALL2_PIN2 * 2 | 1 << HALL2_PIN3 * 2;
 	GPIO(HALL1_PORT, MODER) &= ~(3 << HALL1_PIN1 * 2);
 	GPIO(HALL2_PORT, MODER) &= ~(3 << HALL2_PIN2 * 2 | 3 << HALL2_PIN3 * 2);
+#else
+	GPIO(HALL1_PORT, PUPDR) |= 1 << HALL1_PIN1 * 2 | 1 << HALL1_PIN2 * 2;
+	GPIO(HALL2_PORT, PUPDR) |= 1 << HALL2_PIN3 * 2;
+	GPIO(HALL1_PORT, MODER) &= ~(3 << HALL1_PIN1 * 2 | 3 << HALL1_PIN2 * 2);
+	GPIO(HALL2_PORT, MODER) &= ~(3 << HALL2_PIN3 * 2);
 #endif
 #else
 	GPIO(HALL_PORT, PUPDR) |= 1 << HALL_PIN1 * 2 | 1 << HALL_PIN2 * 2 | 1 << HALL_PIN3 * 2;
@@ -137,7 +142,11 @@ void initgpio(void) {
 		GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
 	}
 #else
+#if BEC_PIN2 >= 1
 	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) << (BEC_PIN2 - 1);
+#else
+	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) >> (1 - BEC_PIN2);
+#endif
 	GPIO(BEC_PORT, MODER) &= ~(2 << BEC_PIN1 * 2 | 2 << BEC_PIN2 * 2);
 #endif
 #endif
@@ -191,14 +200,50 @@ int hallcode(void) {
 #ifdef HALL1_PORT
 	int x1 = GPIO(HALL1_PORT, IDR);
 	int x2 = GPIO(HALL2_PORT, IDR);
-#ifdef HALL1_PIN2
+#ifdef HALL2_PIN2
+#if HALL2_PIN3 >= 2
+#if HALL2_PIN2 >= 1
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) >> (HALL2_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+#else
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) << (1 - HALL2_PIN2) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+#endif
+#else
+#if HALL2_PIN2 >= 1
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) >> (HALL2_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) << (2 - HALL2_PIN3);
+#else
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) << (1 - HALL2_PIN2) | (x2 & (1 << HALL2_PIN3)) << (2 - HALL2_PIN3);
+#endif
+#endif
+#else
+#if HALL2_PIN3 >= 2
+#if HALL1_PIN2 >= 1
 	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x1 & (1 << HALL1_PIN2)) >> (HALL1_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
 #else
-	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x2 & (1 << HALL2_PIN2)) >> (HALL2_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x1 & (1 << HALL1_PIN2)) << (1 - HALL1_PIN2) | (x2 & (1 << HALL2_PIN3)) >> (HALL2_PIN3 - 2);
+#endif
+#else
+#if HALL1_PIN2 >= 1
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x1 & (1 << HALL1_PIN2)) >> (HALL1_PIN2 - 1) | (x2 & (1 << HALL2_PIN3)) << (2 - HALL2_PIN3);
+#else
+	return (x1 & (1 << HALL1_PIN1)) >> HALL1_PIN1 | (x1 & (1 << HALL1_PIN2)) << (1 - HALL1_PIN2) | (x2 & (1 << HALL2_PIN3)) << (2 - HALL2_PIN3);
+#endif
+#endif
 #endif
 #else
 	int x = GPIO(HALL_PORT, IDR);
+#if HALL_PIN3 >= 2
+#if HALL_PIN2 >= 1
 	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) >> (HALL_PIN2 - 1) | (x & (1 << HALL_PIN3)) >> (HALL_PIN3 - 2);
+#else
+	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) << (1 - HALL_PIN2) | (x & (1 << HALL_PIN3)) >> (HALL_PIN3 - 2);
+#endif
+#else
+#if HALL_PIN2 >= 1
+	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) >> (HALL_PIN2 - 1) | (x & (1 << HALL_PIN3)) << (2 - HALL_PIN3);
+#else
+	return (x & (1 << HALL_PIN1)) >> HALL_PIN1 | (x & (1 << HALL_PIN2)) << (1 - HALL_PIN2) | (x & (1 << HALL_PIN3)) << (2 - HALL_PIN3);
+#endif
+#endif
 #endif
 }
 #endif

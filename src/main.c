@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 14
-#define REVPATCH 2
+#define REVPATCH 3
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -555,6 +555,9 @@ void main(void) {
 		TIM3_PSC = CLK_MHZ / 2 - 1; // 500ns resolution
 		TIM3_ARR = -1;
 		TIM3_CR1 = TIM_CR1_URS;
+#ifdef USE_XOR
+		TIM3_CR2 = TIM_CR2_TI1S;
+#endif
 		TIM3_EGR = TIM_EGR_UG;
 		TIM3_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 		hall = 0x10000;

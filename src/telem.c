@@ -200,22 +200,54 @@ void kisstelem(void) {
 }
 
 static void crsftelem(void) {
+	static int n;
+	int a, b, len = 0;
 	if (DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) & DMA_CCR_EN) return;
-	int v = volt * 205 >> 11;
-	int c = curr * 205 >> 11;
 	iobuf[0] = 0xc8;
-	iobuf[1] = 0x0a;
-	iobuf[2] = 0x08;
-	iobuf[3] = v >> 8;
-	iobuf[4] = v;
-	iobuf[5] = c >> 8;
-	iobuf[6] = c;
-	iobuf[7] = csum >> 16;
-	iobuf[8] = csum >> 8;
-	iobuf[9] = csum;
-	iobuf[10] = 0;
-	iobuf[11] = crc8dvbs2(iobuf + 2, 9);
-	DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = 12;
+	switch (n++) {
+		case 0: // Temperature
+			a = temp1 * 10;
+			b = temp2 * 10;
+			iobuf[1] = 0x07;
+			iobuf[2] = 0x0d;
+			iobuf[3] = 0;
+			iobuf[4] = a >> 8;
+			iobuf[5] = a;
+			iobuf[6] = b >> 8;
+			iobuf[7] = b;
+			iobuf[8] = crc8dvbs2(iobuf + 2, 6);
+			len = 9;
+			break;
+		case 1: // Battery
+			a = volt * 205 >> 11;
+			b = curr * 205 >> 11;
+			iobuf[1] = 0x0a;
+			iobuf[2] = 0x08;
+			iobuf[3] = a >> 8;
+			iobuf[4] = a;
+			iobuf[5] = b >> 8;
+			iobuf[6] = b;
+			iobuf[7] = csum >> 16;
+			iobuf[8] = csum >> 8;
+			iobuf[9] = csum;
+			iobuf[10] = 0;
+			iobuf[11] = crc8dvbs2(iobuf + 2, 9);
+			len = 12;
+			break;
+		case 2: // RPM
+			a = erpm / (cfg.telem_poles >> 1);
+			iobuf[1] = 0x06;
+			iobuf[2] = 0x0c;
+			iobuf[3] = 0;
+			iobuf[4] = a >> 16;
+			iobuf[5] = a >> 8;
+			iobuf[6] = a;
+			iobuf[7] = crc8dvbs2(iobuf + 2, 5);
+			len = 8;
+			n = 0;
+			break;
+	}
+	DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = len;
 	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 

@@ -37,9 +37,9 @@
 
 #ifndef ANALOG_CHAN
 #ifdef IO_PA6
-#define ANALOG_CHAN 0x6 // ADC_IN6 (PA6)
+#define ANALOG_CHAN 0x6 // ADC_IN6 (A6)
 #else
-#define ANALOG_CHAN 0x2 // ADC_IN2 (PA2)
+#define ANALOG_CHAN 0x2 // ADC_IN2 (A2)
 #endif
 #endif
 

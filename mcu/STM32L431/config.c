@@ -26,7 +26,7 @@
 #endif
 
 #ifndef ANALOG_CHAN
-#define ANALOG_CHAN 0x7 // ADC_IN7 (PA2)
+#define ANALOG_CHAN 0x7 // ADC_IN7 (A2)
 #endif
 
 #ifdef TEMP_CHAN
