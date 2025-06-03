@@ -196,21 +196,34 @@ skip:
 	ADC_SMPR1(ADC2) = -1;
 	ADC_SMPR2(ADC1) = -1;
 	ADC_SMPR2(ADC2) = -1;
-	int val1 = TEMP_CHAN | 0x480; // ADC1_IN18 (vref)
-	int val2 = SENS_CHAN;
-	len1 = 2;
+	uint64_t seq1 = 0;
+	uint64_t seq2 = SENS_CHAN;
+	len1 = 0;
 	len2 = SENS_CNT;
 	if (IO_ANALOG) {
 #ifdef ANALOG_CHAN
-		val2 |= ANALOG_CHAN << (len2++ * 6);
+#ifdef ANALOG_ADC2
+		seq2 |= ANALOG_CHAN << (len2++ * 6);
 #else
-		val1 = val1 << 6 | 0x3; // ADC1_IN3 (A2)
-		++len1;
+		seq1 = ANALOG_CHAN;
+		len1 = 1;
+#endif
+#else
+		seq1 = 0x3; // ADC1_IN3 (A2)
+		len1 = 1;
 #endif
 		ain = 1;
 	}
-	ADC_SQR1(ADC1) = val1 << 6 | (len1 - 1);
-	ADC_SQR1(ADC2) = val2 << 6 | (len2 - 1);
+#ifdef TEMP_ADC2
+	seq2 |= TEMP_CHAN << (len2++ * 6);
+#else
+	seq1 |= TEMP_CHAN << (len1++ * 6);
+#endif
+	seq1 |= 0x12 << (len1++ * 6); // ADC1_IN18 (vref)
+	ADC_SQR1(ADC1) = seq1 << 6 | (len1 - 1);
+	ADC_SQR1(ADC2) = seq2 << 6 | (len2 - 1);
+	ADC_SQR2(ADC1) = seq1 >> 24;
+	ADC_SQR2(ADC2) = seq2 >> 24;
 	DMA1_CPAR(4) = (uint32_t)&ADC_DR(ADC1);
 	DMA1_CMAR(4) = (uint32_t)(buf + len2);
 	DMA1_CPAR(5) = (uint32_t)&ADC_DR(ADC2);
@@ -332,9 +345,15 @@ static void adcdma(void) {
 #if SENS_CNT >= 3
 	u = buf[i++];
 #endif
+#if !defined ANALOG_ADC2 && defined TEMP_ADC2
+	int t = buf[i++];
 	if (ain) a = buf[i++];
-	int r = ST_VREFINT_CAL * 3000 / buf[i + 1];
-	adcdata(TEMP_FUNC(buf[i] * r >> TEMP_SHIFT), u * r >> 12, v * r >> 12, c * r >> 12, a * r >> 12);
+#else
+	if (ain) a = buf[i++];
+	int t = buf[i++];
+#endif
+	int r = ST_VREFINT_CAL * 3000 / buf[i];
+	adcdata(TEMP_FUNC(t * r >> TEMP_SHIFT), u * r >> 12, v * r >> 12, c * r >> 12, a * r >> 12);
 }
 
 void dma1_channel4_isr(void) {

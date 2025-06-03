@@ -391,7 +391,7 @@ void checkcfg(void) {
 	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 100);
 	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
-	cfg.duty_lock = cfg.duty_lock && cfg.damp && !cfg.brushed;
+	cfg.duty_lock = clamp(cfg.duty_lock, 0, cfg.damp && !cfg.brushed ? 2 : 0);
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : cfg.duty_lock ? 1 : 3);
 	cfg.throt_rev = clamp(cfg.throt_rev, 0, 3);
 	cfg.throt_brk = clamp(cfg.throt_brk, cfg.duty_drag, 100);

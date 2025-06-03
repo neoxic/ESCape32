@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 14
-#define REVPATCH 3
+#define REVPATCH 4
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -40,7 +40,7 @@ const Cfg cfgdata = {
 	.duty_ramp = DUTY_RAMP,     // Maximum duty cycle ramp (kERPM) [0..100]
 	.duty_rate = DUTY_RATE,     // Duty cycle slew rate (0.1%/ms) [1..100]
 	.duty_drag = DUTY_DRAG,     // Drag brake power (%) [0..100]
-	.duty_lock = DUTY_LOCK,     // Active drag brake (motor lock)
+	.duty_lock = DUTY_LOCK,     // Active drag brake (0 - off, 1 - soft, 2 - hard)
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse, 3 - forward/brake)
 	.throt_rev = THROT_REV,     // Maximum reverse throttle (0 - 100%, 1 - 75%, 2 - 50%, 3 - 25%)
 	.throt_brk = THROT_BRK,     // Maximum brake power (%) [0..100]
@@ -621,13 +621,8 @@ void main(void) {
 				lock = cfg.duty_lock;
 				if (!running) laststep();
 			}
-			if (lock) { // Active drag brake
-				curduty = min(cfg.duty_drag, 100 - cutback); // 60% cutback at 15C above prot_temp
-				running = 0;
-				goto setduty;
-			}
-			if (sync < 6 || erpm < 800) { // Passive drag brake
-				curduty = cfg.duty_drag * 20;
+			if (sync < 6 || erpm < 800 || lock == 2) { // Drag brake
+				curduty = lock ? min(cfg.duty_drag, 100 - cutback) : cfg.duty_drag * 20; // 60% cutback at 15C above prot_temp
 				running = 0;
 				goto setduty;
 			}

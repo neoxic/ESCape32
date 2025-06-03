@@ -128,16 +128,16 @@ void init(void) {
 	ADC_CFGR1(ADC1) = ADC_CFGR1_DMAEN | ADC_CFGR1_EXTSEL_VAL(9) | ADC_CFGR1_EXTEN_RISING_EDGE; // EXTSEL=TIM1_TRGO
 	ADC_SMPR1(ADC1) = -1; // Sampling time ~16us @ HCLK/2=40Mhz
 	ADC_SMPR2(ADC1) = -1;
-	uint64_t val = SENS_CHAN;
+	uint64_t seq = SENS_CHAN;
 	len = SENS_CNT;
 	if (IO_ANALOG) {
-		val |= ANALOG_CHAN << (len++ * 6);
+		seq |= ANALOG_CHAN << (len++ * 6);
 		ain = 1;
 	}
-	val |= TEMP_CHAN << (len * 6); // ADC_IN0 (vref)
+	seq |= TEMP_CHAN << (len * 6); // ADC_IN0 (vref)
 	len += 2;
-	ADC_SQR1(ADC1) = val << 6 | (len - 1);
-	ADC_SQR2(ADC1) = val >> 24;
+	ADC_SQR1(ADC1) = seq << 6 | (len - 1);
+	ADC_SQR2(ADC1) = seq >> 24;
 	DMA1_CPAR(1) = (uint32_t)&ADC_DR(ADC1);
 	DMA1_CMAR(1) = (uint32_t)buf;
 }
