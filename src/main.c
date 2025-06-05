@@ -607,7 +607,7 @@ void main(void) {
 #endif
 	laststep();
 	PID bpid = {.Kp = 50, .Ki = 0, .Kd = 1000}; // Stall protection
-	PID cpid = {.Kp = 400, .Ki = 0, .Kd = 600}; // Overcurrent protection
+	PID cpid = {.Kp = 40, .Ki = 0, .Kd = 60}; // Overcurrent protection
 	for (int curduty = 0, running = 0, braking = 2, cutoff = 0, boost = 0, choke = 0, n = 0;;) {
 		int ccr, arr = CLK_KHZ / cfg.freq_min;
 		int input = cutoff == 3000 ? 0 : throt;
