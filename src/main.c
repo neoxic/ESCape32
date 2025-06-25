@@ -65,7 +65,7 @@ const Cfg cfgdata = {
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
-	.bec = BEC,                 // BEC voltage control [0..3]
+	.bec = BEC,                 // BEC voltage control (0 - 5.5V, 1 - 6.5V, 2 - 7.4V, 3 - 8.4V)
 	.led = LED,                 // LED on/off bits [0..15]
 };
 
@@ -427,14 +427,18 @@ void adcdata(int t, int u, int v, int c, int a) {
 		c = 0;
 	}
 	temp1 = max((t = smooth(&st, t, 10)) >> 2, 0); // C
-	temp2 = max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0); // C
+	temp2 = hall || cfg.prot_sens ? max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0) : 0; // C
+#if VOLT_MUL > 0
 	volt = smooth(&sv, v * VOLT_MUL * 131 >> 17, 7); // V/100
+#endif
+#if CURR_MUL > 0
 	curr = smooth(&sc, c * CURR_MUL * 205 >> 11, 4); // A/100
 	i += curr; // Current integral
 	if (!(tickms & 0x3ff)) {
 		csum = (q += i >> 10) * 91 >> 15; // mAh
 		i = 0;
 	}
+#endif
 	if (cfg.prot_temp) { // Temperature protection
 		int x = -(cfg.prot_temp << 2);
 		switch (cfg.prot_sens) {

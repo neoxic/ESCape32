@@ -83,7 +83,7 @@
 #endif
 
 #ifndef TEMP_SENS
-#define TEMP_SENS(x) 0
+#define TEMP_SENS NTC10K3455UP2K
 #endif
 #ifndef VOLT_MUL
 #define VOLT_MUL 0 // %

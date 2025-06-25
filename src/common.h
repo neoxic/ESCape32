@@ -153,21 +153,17 @@ static inline int clamp(int x, int a, int b) {return min(max(x, a), b);}
 // Temperature sensors
 
 static inline int NTC10K3455LO2K(int x) {
-	if (x < 100) return 0;
 	return (x < 2338 ? (x - 1650) * 46 + 74841 : (x - 2640) * 83 + 132044) >> 8;
 }
 
 static inline int NTC10K3455UP2K(int x) {
-	if (x > 3200) return 0;
 	return (x > 961 ? (x - 1650) * -46 + 74841 : (x - 660) * -83 + 132044) >> 8;
 }
 
 static inline int NTC10K3455LO10K(int x) {
-	if (x < 100) return 0;
 	return (x < 2762 ? (x - 1650) * 36 + 25600 : (x - 3036) * 151 + 107130) >> 8;
 }
 
 static inline int NTC10K3455UP10K(int x) {
-	if (x > 3200) return 0;
 	return (x > 537 ? (x - 1650) * -36 + 25600 : (x - 264) * -151 + 107130) >> 8;
 }
