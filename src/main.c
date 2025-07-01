@@ -18,7 +18,7 @@
 #include "common.h"
 
 #define REVISION 14
-#define REVPATCH 4
+#define REVPATCH 5
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -65,7 +65,7 @@ const Cfg cfgdata = {
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
-	.bec = BEC,                 // BEC voltage control [0..3]
+	.bec = BEC,                 // BEC voltage control (0 - 5.5V, 1 - 6.5V, 2 - 7.4V, 3 - 8.4V)
 	.led = LED,                 // LED on/off bits [0..15]
 };
 
@@ -427,7 +427,7 @@ void adcdata(int t, int u, int v, int c, int a) {
 		c = 0;
 	}
 	temp1 = max((t = smooth(&st, t, 10)) >> 2, 0); // C
-	temp2 = max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0); // C
+	temp2 = hall || cfg.prot_sens ? max((u = smooth(&su, TEMP_SENS(u), 10)) >> 2, 0) : 0; // C
 	volt = smooth(&sv, v * VOLT_MUL * 131 >> 17, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL * 205 >> 11, 4); // A/100
 	i += curr; // Current integral
@@ -607,7 +607,7 @@ void main(void) {
 #endif
 	laststep();
 	PID bpid = {.Kp = 50, .Ki = 0, .Kd = 1000}; // Stall protection
-	PID cpid = {.Kp = 400, .Ki = 0, .Kd = 600}; // Overcurrent protection
+	PID cpid = {.Kp = 80, .Ki = 0, .Kd = 600}; // Overcurrent protection
 	for (int curduty = 0, running = 0, braking = 2, cutoff = 0, boost = 0, choke = 0, n = 0;;) {
 		int ccr, arr = CLK_KHZ / cfg.freq_min;
 		int input = cutoff == 3000 ? 0 : throt;
@@ -679,8 +679,8 @@ void main(void) {
 		if (brushed && step != reverse + 1) step = 0; // Change brushed direction
 		if ((newduty += boost - choke) < 0) newduty = 0;
 		if (ertm) { // Variable PWM frequency
+			arr = scale(ertm, 1000, 2000, CLK_KHZ / cfg.freq_max, arr); // 30..60 kERPM
 			erpm = 60000000 / ertm;
-			arr = scale(erpm, 30000, 60000, arr, CLK_KHZ / cfg.freq_max);
 		}
 		int maxduty = min(scale(erpm, 0, cfg.duty_ramp * 1000, cfg.duty_spup * 20, 2000), 2000 - cutback * 25); // 75% cutback at 15C above prot_temp
 		if (newduty > maxduty) newduty = maxduty;

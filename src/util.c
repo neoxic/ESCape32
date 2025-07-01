@@ -37,6 +37,10 @@
 #endif
 
 #ifndef BEC_MAP
+#elif BEC_MAP == 0xA45
+#define BEC_PORT A
+#define BEC_PIN1 4
+#define BEC_PIN2 5
 #elif BEC_MAP == 0xB35
 #define BEC_PORT B
 #define BEC_PIN1 3
@@ -497,6 +501,7 @@ int resetcfg(void) {
 	__disable_irq();
 	memcpy(&cfg, &cfgdata, sizeof cfgdata);
 	__enable_irq();
+	checkcfg();
 	return savecfg();
 }
 
