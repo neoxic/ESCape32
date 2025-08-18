@@ -18,19 +18,19 @@
 #include "common.h"
 
 #define REVISION 14
-#define REVPATCH 5
+#define REVPATCH 1
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
 	.revision = REVISION,
 	.revpatch = REVPATCH,
-	.name = TARGET_NAME,
+	.name = TARGET_NAME, Aria 70a
 	.arm = ARM,                 // Wait for 250ms zero throttle on startup
 	.damp = DAMP,               // Complementary PWM (active freewheeling)
 	.revdir = REVDIR,           // Reversed motor direction
 	.brushed = BRUSHED,         // Brushed mode
 	.timing = TIMING,           // Motor timing (15/16 deg) [1..31]
-	.sine_range = SINE_RANGE,   // Sine startup range (%) [0 - off, 5..25]
+	.sine_range = SINE_RANGE,   // Sine startup range (%) [0 - off, 5..30]
 	.sine_power = SINE_POWER,   // Sine startup power (%) [1..15]
 	.freq_min = FREQ_MIN,       // Minimum PWM frequency (kHz) [16..48]
 	.freq_max = FREQ_MAX,       // Maximum PWM frequency (kHz) [16..96]
@@ -43,7 +43,7 @@ const Cfg cfgdata = {
 	.duty_lock = DUTY_LOCK,     // Active drag brake (0 - off, 1 - soft, 2 - hard)
 	.throt_mode = THROT_MODE,   // Throttle mode (0 - forward, 1 - forward/reverse, 2 - forward/brake/reverse, 3 - forward/brake)
 	.throt_rev = THROT_REV,     // Maximum reverse throttle (0 - 100%, 1 - 75%, 2 - 50%, 3 - 25%)
-	.throt_brk = THROT_BRK,     // Maximum brake power (%) [0..100]
+	.throt_brk = THROT_BRK,     // Maximum brake power (%) [0..75]
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
 	.throt_cal = THROT_CAL,     // Automatic throttle calibration
 	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
@@ -56,17 +56,17 @@ const Cfg cfgdata = {
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
 	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..2 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
-	.prot_stall = PROT_STALL,   // Stall protection (ERPM) [0 - off, 1800..3200]
-	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
-	.prot_sens = PROT_SENS,     // Temperature sensor (0 - ESC, 1 - motor, 2 - both)
-	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
+	.prot_stall = PROT_STALL,   // Stall protection (ERPM) [0 - off, 2000..3000]
+	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 75..100]
+	.prot_sens = PROT_SENS,     // Temperature sensor (0 - ESC, 1 - mmotor)
+	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..33]
 	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..24]
-	.prot_curr = PROT_CURR,     // Maximum current (A) [0..500]
+	.prot_curr = PROT_CURR,     // Maximum current (A) [0..750]
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
-	.bec = BEC,                 // BEC voltage control (0 - 5.5V, 1 - 6.5V, 2 - 7.4V, 3 - 8.4V)
-	.led = LED,                 // LED on/off bits [0..15]
+	.bec = BEC,                 // BEC voltage control (0 - 7.4V)
+	.led = LED,                 // LED on/off bits [0..5]
 };
 
 __attribute__((__section__(".cfg")))
