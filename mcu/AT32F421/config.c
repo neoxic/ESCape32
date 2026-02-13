@@ -84,7 +84,7 @@ void init(void) {
 #endif
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
-	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC
+	nvic_set_priority(NVIC_DMA1_CHANNEL1_IRQ, 0x80); // ADC, WS2812
 	nvic_set_priority(NVIC_DMA1_CHANNEL2_3_DMA2_CHANNEL1_2_IRQ, 0x80); // USART1_TX
 	nvic_set_priority(NVIC_DMA1_CHANNEL4_7_DMA2_CHANNEL3_5_IRQ, 0x40); // TIM15 or USART2_RX
 

@@ -38,28 +38,30 @@
 	XX(17, val, throt_rev) \
 	XX(18, val, throt_brk) \
 	XX(19, val, throt_set) \
-	XX(20, val, throt_cal) \
-	XX(21, val, throt_min) \
-	XX(22, val, throt_mid) \
-	XX(23, val, throt_max) \
-	XX(24, val, analog_min) \
-	XX(25, val, analog_max) \
-	XX(26, val, input_mode) \
-	XX(27, val, input_chid) \
-	XX(28, val, telem_mode) \
-	XX(29, val, telem_phid) \
-	XX(30, val, telem_poles) \
-	XX(31, val, prot_stall) \
-	XX(32, val, prot_temp) \
-	XX(33, val, prot_sens) \
-	XX(34, val, prot_volt) \
-	XX(35, val, prot_cells) \
-	XX(36, val, prot_curr) \
-	XX(37, str, music) \
-	XX(38, val, volume) \
-	XX(39, val, beacon) \
-	XX(40, val, bec) \
-	XX(41, val, led) \
+	XX(20, val, throt_ztc) \
+	XX(21, val, throt_cal) \
+	XX(22, val, throt_min) \
+	XX(23, val, throt_mid) \
+	XX(24, val, throt_max) \
+	XX(25, val, analog_min) \
+	XX(26, val, analog_max) \
+	XX(27, val, input_mode) \
+	XX(28, val, input_ch1) \
+	XX(29, val, input_ch2) \
+	XX(30, val, telem_mode) \
+	XX(31, val, telem_phid) \
+	XX(32, val, telem_poles) \
+	XX(33, val, prot_stall) \
+	XX(34, val, prot_temp) \
+	XX(35, val, prot_sens) \
+	XX(36, val, prot_volt) \
+	XX(37, val, prot_cells) \
+	XX(38, val, prot_curr) \
+	XX(39, str, music) \
+	XX(40, val, volume) \
+	XX(41, val, beacon) \
+	XX(42, val, bec) \
+	XX(43, val, led) \
 
 static int beep = -1;
 

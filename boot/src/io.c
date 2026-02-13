@@ -30,7 +30,7 @@
 
 void initio(void) {
 #ifdef IO_PA2
-#ifdef IO_AUX
+#ifdef IO_RXTX
 	GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
 	GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 	TIM1_ARR = CLK_CNT(20000) - 1;

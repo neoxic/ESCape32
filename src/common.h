@@ -79,6 +79,7 @@ typedef struct {
 	char throt_rev;
 	char throt_brk;
 	char throt_set;
+	char throt_ztc;
 	char throt_cal;
 	uint16_t throt_min;
 	uint16_t throt_mid;
@@ -86,7 +87,8 @@ typedef struct {
 	uint16_t analog_min;
 	uint16_t analog_max;
 	char input_mode;
-	char input_chid;
+	char input_ch1;
+	char input_ch2;
 	char telem_mode;
 	char telem_phid;
 	char telem_poles;
@@ -113,8 +115,8 @@ extern char _boot[], _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _eod[], _
 extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
-extern int throt, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval;
-extern char analog, telreq, telmode, flipdir, beacon, dshotext;
+extern int throt, brake, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval;
+extern char analog, telreq, telmode, flipdir, beacon, dshotext, auxup;
 
 void init(void);
 void initio(void);

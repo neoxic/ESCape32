@@ -17,8 +17,8 @@
 
 #include "common.h"
 
-#define REVISION 14
-#define REVPATCH 5
+#define REVISION 15
+#define REVPATCH 0
 
 const Cfg cfgdata = {
 	.id = 0x32ea,
@@ -45,6 +45,7 @@ const Cfg cfgdata = {
 	.throt_rev = THROT_REV,     // Maximum reverse throttle (0 - 100%, 1 - 75%, 2 - 50%, 3 - 25%)
 	.throt_brk = THROT_BRK,     // Maximum brake power (%) [0..100]
 	.throt_set = THROT_SET,     // Preset throttle (%) [0..100]
+	.throt_ztc = THROT_ZTC,     // Zero-throttle coasting
 	.throt_cal = THROT_CAL,     // Automatic throttle calibration
 	.throt_min = THROT_MIN,     // Minimum throttle setpoint (us)
 	.throt_mid = THROT_MID,     // Middle throttle setpoint (us)
@@ -52,7 +53,8 @@ const Cfg cfgdata = {
 	.analog_min = ANALOG_MIN,   // Minimum analog throttle setpoint (mV)
 	.analog_max = ANALOG_MAX,   // Maximum analog throttle setpoint (mV)
 	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
-	.input_chid = INPUT_CHID,   // Serial channel ID [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
+	.input_ch1 = INPUT_CH1,     // Throttle channel [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
+	.input_ch2 = INPUT_CH2,     // Auxiliary channel [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
 	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
 	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..2 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
@@ -72,8 +74,8 @@ const Cfg cfgdata = {
 __attribute__((__section__(".cfg")))
 Cfg cfg = cfgdata;
 
-int throt, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval = -1;
-char analog, telreq, telmode, flipdir, beacon, dshotext;
+int throt, brake, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval = -1;
+char analog, telreq, telmode, flipdir, beacon, dshotext, auxup;
 
 static int oldstep, step, sine, sync, ival, cutback, led;
 static char prep, fast, lock, tick, ready, reverse;
@@ -99,13 +101,13 @@ static int getcode(void) {
 
 /*
 6-step commutation sequence:
- #  +|-  MASK  BEMF
- 1  C|B   110   101
- 2  A|B   011   001
- 3  A|C   101   011
- 4  B|C   110   010
- 5  B|A   011   110
- 6  C|A   101   100
+ #  +|-  COMP  MASK  BEMF
+ 1  C|B   101   110   101
+ 2  A|B   011   011   001
+ 3  A|C   110   101   011
+ 4  B|C   001   110   010
+ 5  B|A   111   011   110
+ 6  C|A   010   101   100
 */
 
 static void nextstep(void) {
@@ -136,15 +138,12 @@ static void nextstep(void) {
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
 		TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
 #ifdef PWM_ENABLE
-		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+		int er = TIM_CCER_CC1E | TIM_CCER_CC1NP | TIM_CCER_CC2E | TIM_CCER_CC2NP | TIM_CCER_CC3E | TIM_CCER_CC3NP;
 #else
-		int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+		int er = TIM_CCER_CC1E | TIM_CCER_CC1NE | TIM_CCER_CC2E | TIM_CCER_CC2NE | TIM_CCER_CC3E | TIM_CCER_CC3NE;
 #endif
 #ifdef INVERTED_HIGH
 		er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-		er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 		TIM1_CCER = er;
 		TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
@@ -167,12 +166,13 @@ static void nextstep(void) {
 	} else {
 		if (++step > 6) step = 1;
 	}
-	static const char seq[] = {0x35, 0x19, 0x2b, 0x32, 0x1e, 0x2c}; // Commutation sequence
+	static const uint16_t seq[] = {0x175, 0xd9, 0x1ab, 0x72, 0x1de, 0xac}; // Commutation sequence
 	static int pcc, val, cnt, buf[6];
 	int x = seq[step - 1];
 	int m = x >> 3; // Energized phase mask
 	int p = x & m; // Positive phase
 	int n = ~x & m; // Negative phase
+	int cc = m >> 3 ^ reverse << 2; // Floating phase
 	int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 #ifdef TIM1_CCR5
 	int m2 = TIM_CCMR2_OC3PE;
@@ -181,7 +181,7 @@ static void nextstep(void) {
 	int m2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE | TIM_CCMR2_OC4M_PWM1;
 	int er = TIM_CCER_CC4E;
 #endif
-	int cc = (step & 1) ^ reverse ? 4 : 0; // BEMF rising/falling
+	if (cfg.throt_ztc && !throt) p = n = 0; // Zero-throttle coasting
 	if (p & 1) {
 		m1 |= TIM_CCMR1_OC1M_PWM1;
 #ifdef PWM_ENABLE
@@ -203,7 +203,6 @@ static void nextstep(void) {
 		m1 |= TIM_CCMR1_OC1M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC1NE;
-		cc |= 1;
 	}
 	if (p & 2) {
 		m1 |= TIM_CCMR1_OC2M_PWM1;
@@ -226,7 +225,6 @@ static void nextstep(void) {
 		m1 |= TIM_CCMR1_OC2M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC2NE;
-		cc |= 2;
 	}
 	if (p & 4) {
 		m2 |= TIM_CCMR2_OC3M_PWM1;
@@ -249,13 +247,12 @@ static void nextstep(void) {
 		m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
 #endif
 		er |= TIM_CCER_CC3NE;
-		cc |= 3;
 	}
-#ifdef INVERTED_HIGH
-	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
 #ifdef PWM_ENABLE
 	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
+#endif
+#ifdef INVERTED_HIGH
+	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
 #endif
 	TIM1_CCMR1 = m1;
 	TIM1_CCMR2 = m2;
@@ -520,8 +517,9 @@ void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
 	const int brushed = cfg.brushed;
-	lock = cfg.duty_lock;
 	throt = cfg.throt_set * 20;
+	brake = cfg.duty_drag;
+	lock = cfg.duty_lock;
 	telmode = cfg.telem_mode;
 #if defined ANALOG || defined ANALOG_CHAN
 	analog = IO_ANALOG;
@@ -622,7 +620,7 @@ void main(void) {
 				if (!running) laststep();
 			}
 			if (sync < 6 || erpm < 800 || lock == 2) { // Drag brake
-				curduty = lock ? min(cfg.duty_drag, 100 - cutback) : cfg.duty_drag * 20; // 60% cutback at 15C above prot_temp
+				curduty = lock ? min(brake, 100 - cutback) : brake * 20; // 60% cutback at 15C above prot_temp
 				running = 0;
 				goto setduty;
 			}
@@ -631,7 +629,7 @@ void main(void) {
 		}
 		if (input < 0) { // Reverse
 			if ((cfg.throt_mode == 2 && braking != 2) || cfg.throt_mode == 3) { // Proportional brake
-				curduty = scale(input, -2000, 0, cfg.throt_brk * 20, cfg.duty_drag * 20);
+				curduty = scale(input, -2000, 0, cfg.throt_brk * 20, brake * 20);
 				running = 0;
 				braking = 1;
 				goto setduty;
@@ -707,7 +705,7 @@ void main(void) {
 				int m1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE;
 				int m2 = TIM_CCMR2_OC3PE;
 #ifdef PWM_ENABLE
-				int er = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E;
+				int er = TIM_CCER_CC1E | TIM_CCER_CC1NP | TIM_CCER_CC2E | TIM_CCER_CC2NP | TIM_CCER_CC3E | TIM_CCER_CC3NP;
 				if (reverse) {
 					m1 |= TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_PWM1;
 					m2 |= TIM_CCMR2_OC3M_FORCE_LOW;
@@ -731,9 +729,6 @@ void main(void) {
 #endif
 #ifdef INVERTED_HIGH
 				er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-				er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 				TIM1_CCMR1 = m1;
 				TIM1_CCMR2 = m2;
@@ -781,6 +776,10 @@ void main(void) {
 		__WFI();
 		if (tick & 15) continue; // 16kHz -> 1kHz
 #ifndef ANALOG
+		if (++auxup == 100) { // Restore brake after 100ms timeout
+			brake = cfg.duty_drag;
+			auxup = 0;
+		}
 		if (cutoff < 3000) cutoff = volt < cfg.prot_volt * cells * 10 ? cutoff + 1 : 0;
 		else if (!running) goto rearm; // Low voltage cutoff after 3s
 #endif

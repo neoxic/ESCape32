@@ -44,6 +44,44 @@ static Func ioirq, iodma;
 static char dshotinv, iobuf[1024];
 static uint16_t dshotarr1, dshotarr2, dshotbuf1[32], dshotbuf2[23] = {-1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, 0, -1, -1, -1};
 
+static void setthrot(int x) {
+	if (x < 0) return;
+	throt = cfg.throt_mode ?
+		x < cfg.throt_mid - 50 ? scale(x, cfg.throt_min, cfg.throt_mid - 50, -2000, 0):
+		x > cfg.throt_mid + 50 ? scale(x, cfg.throt_mid + 50, cfg.throt_max, 0, 2000): 0:
+		x > cfg.throt_min + 50 ? scale(x, cfg.throt_min + 50, cfg.throt_max, 0, 2000): 0;
+}
+
+#if defined IO_PA2 || defined IO_AUX
+static void setbrake(int x) {
+	if (x < 0) return;
+	brake = scale(x, 1100, 1900, 0, cfg.duty_drag);
+	auxup = 0;
+}
+#endif
+
+#ifdef IO_AUX
+void iotim2_isr(void) {
+#if IOTIM2 == TIM3
+	int p = TIM3_CCR1; // Pulse period
+	int w = TIM3_CCR2; // Pulse width
+	if (p < 2000) return; // Invalid signal
+#else // TIM16 or TIM17
+	static uint16_t t1;
+	uint16_t t2 = TIM_CCR1(IOTIM2);
+	uint16_t er = TIM_CCER(IOTIM2);
+	TIM_CCER(IOTIM2) = er ^ TIM_CCER_CC1P;
+	if (!(er & TIM_CCER_CC1P)) { // Rising edge
+		t1 = t2;
+		return;
+	}
+	int w = t2 - t1;
+#endif
+	if (w < 800 || w > 2200) return; // Invalid signal
+	setbrake(w);
+}
+#endif
+
 void initio(void) {
 	ioirq = entryirq;
 	TIM_BDTR(IOTIM) = TIM_BDTR_MOE;
@@ -56,6 +94,22 @@ void initio(void) {
 	TIM_CR1(IOTIM) = TIM_CR1_URS;
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
+#ifdef IO_AUX
+#if IOTIM2 == TIM3
+	TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
+	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
+	TIM3_CCER = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC2P; // IC1 on rising edge on TI1, IC2 on falling edge on TI1
+	TIM3_DIER = TIM_DIER_CC2IE;
+#else // TIM16 or TIM17
+	TIM_CCMR1(IOTIM2) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+	TIM_CCER(IOTIM2) = TIM_CCER_CC1E; // IC1 on rising edge on TI1
+	TIM_DIER(IOTIM2) = TIM_DIER_CC1IE;
+#endif
+	TIM_PSC(IOTIM2) = CLK_MHZ - 1; // 1us resolution
+	TIM_ARR(IOTIM2) = -1;
+	TIM_EGR(IOTIM2) = TIM_EGR_UG;
+	TIM_CR1(IOTIM2) = TIM_CR1_CEN;
+#endif
 }
 
 static void entryirq(void) {
@@ -71,7 +125,7 @@ static void entryirq(void) {
 		ioirq = cliirq;
 #ifdef IO_PA2
 		io_serial();
-#ifdef IO_AUX
+#ifdef IO_RXTX
 		GPIOA_PUPDR |= 0x80000000; // A15 (pull-down)
 		GPIOA_MODER &= ~0x40000000; // A15 (USART2_RX)
 		TIM15_ARR = CLK_CNT(20000) - 1;
@@ -221,13 +275,6 @@ static void calibirq(void) {
 	TIM_DIER(IOTIM) = TIM_DIER_CC2IE;
 }
 
-static void servoval(int x) {
-	throt = cfg.throt_mode ?
-		x < cfg.throt_mid - 50 ? scale(x, cfg.throt_min, cfg.throt_mid - 50, -2000, 0):
-		x > cfg.throt_mid + 50 ? scale(x, cfg.throt_mid + 50, cfg.throt_max, 0, 2000): 0:
-		x > cfg.throt_min + 50 ? scale(x, cfg.throt_min + 50, cfg.throt_max, 0, 2000): 0;
-}
-
 static void servoirq(void) {
 	int p = TIM_CCR1(IOTIM); // Pulse period
 	int w = TIM_CCR2(IOTIM); // Pulse width
@@ -239,7 +286,7 @@ static void servoirq(void) {
 	}
 	if (w < 800 || w > 2200) return; // Invalid signal
 	IWDG_KR = IWDG_KR_RESET;
-	servoval(w);
+	setthrot(w);
 }
 
 static void dshotirq(void) {
@@ -497,6 +544,17 @@ void usart2_isr(void) {
 	ioirq();
 }
 
+static int getchan(const char *buf, int n) {
+	if (n < 0) return -1;
+	int i = (n * 11) >> 3;
+	int a = (n * 3) & 7;
+	int b = ((n + 1) * 3) & 7;
+	int x = a < b ?
+		buf[i] >> a | (buf[i + 1] & ((1 << b) - 1)) << (8 - a):
+		buf[i] >> a | buf[i + 1] << (8 - a) | (buf[i + 2] & ((1 << b) - 1)) << (16 - a);
+	return (x * 5 >> 3) + 880;
+}
+
 static void serialresync(void) {
 #ifdef AT32F4
 	USART2_SR, USART2_DR; // Clear flags
@@ -542,8 +600,9 @@ static int serialreq(char a, int x) {
 		case 0x2: // Reversed motor direction
 			flipdir = !!x;
 			break;
-		case 0x3: // Drag brake amount
-			cfg.duty_drag = min(x, 100);
+		case 0x3: // Drag brake adjustment
+			brake = min(x, 100) * cfg.duty_drag * 41 >> 12;
+			auxup = 0;
 			break;
 #if LED_CNT > 0
 		case 0x4: // LED
@@ -599,8 +658,10 @@ static void ibusdma(void) {
 		serialresync();
 		return;
 	}
-	int n = cfg.input_chid;
-	int x = 1500;
+	int n1 = cfg.input_ch1;
+	int n2 = cfg.input_ch2;
+	int x1 = -1;
+	int x2 = -1;
 	int u = 0xff9f;
 	for (int i = 1;; ++i) {
 		int j = i << 1;
@@ -608,28 +669,17 @@ static void ibusdma(void) {
 		char b = iobuf[j + 1];
 		int v = a | b << 8;
 		if (i == 15) {
-			if (u != v) { // Invalid checksum
-				serialresync();
-				return;
-			}
-			break;
+			if (u == v) break;
+			serialresync(); // Invalid checksum
+			return;
 		}
 		u -= a + b;
-		if (i == n) x = v & 0xfff;
+		if (i == n1) x1 = v & 0xfff;
+		else if (i == n2) x2 = v & 0xfff;
 	}
 	IWDG_KR = IWDG_KR_RESET;
-	servoval(x);
-}
-
-static void sbusvals(const char *buf) {
-	int n = cfg.input_chid - 1;
-	int i = (n * 11) >> 3;
-	int a = (n * 3) & 7;
-	int b = ((n + 1) * 3) & 7;
-	int x = a < b ?
-		buf[i] >> a | (buf[i + 1] & ((1 << b) - 1)) << (8 - a):
-		buf[i] >> a | buf[i + 1] << (8 - a) | (buf[i + 2] & ((1 << b) - 1)) << (16 - a);
-	servoval((x * 5 >> 3) + 880);
+	setthrot(x1);
+	setbrake(x2);
 }
 
 static void sbusrx(void) {
@@ -695,7 +745,8 @@ static void sbusdma(void) {
 	}
 	TIM15_EGR = TIM_EGR_UG;
 	IWDG_KR = IWDG_KR_RESET;
-	sbusvals(iobuf + 1);
+	setthrot(getchan(iobuf + 1, cfg.input_ch1 - 1));
+	setbrake(getchan(iobuf + 1, cfg.input_ch2 - 1));
 	int a = iobuf[24];
 	if ((a & 0xf) != 0x4) return; // No telemetry
 	if (telmode == 2 || telmode == 3 || a >> 4 != cfg.telem_phid - 1) { // Disable RX for 7280us (2000+660*8)
@@ -733,7 +784,8 @@ static void crsfirq(void) {
 	DMA1_CCR(USART2_RX_DMA) = DMA_CCR_EN | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 	if (len != 26 || iobuf[1] != 0x18 || iobuf[2] != 0x16 || crc8dvbs2(iobuf + 2, 24)) return; // Invalid frame
 	IWDG_KR = IWDG_KR_RESET;
-	sbusvals(iobuf + 3);
+	setthrot(getchan(iobuf + 3, cfg.input_ch1 - 1));
+	setbrake(getchan(iobuf + 3, cfg.input_ch2 - 1));
 }
 
 static void cliirq(void) {

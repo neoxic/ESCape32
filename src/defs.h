@@ -151,6 +151,9 @@
 #ifndef THROT_MODE
 #define THROT_MODE 0
 #endif
+#ifndef THROT_ZTC
+#define THROT_ZTC 0
+#endif
 #ifndef THROT_REV
 #define THROT_REV 0
 #endif
@@ -185,8 +188,11 @@
 #ifndef INPUT_MODE
 #define INPUT_MODE 0
 #endif
-#ifndef INPUT_CHID
-#define INPUT_CHID 0
+#ifndef INPUT_CH1
+#define INPUT_CH1 0
+#endif
+#ifndef INPUT_CH2
+#define INPUT_CH2 0
 #endif
 #ifndef TELEM_MODE
 #define TELEM_MODE 0

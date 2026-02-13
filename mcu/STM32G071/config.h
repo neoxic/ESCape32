@@ -55,6 +55,18 @@
 #define IOTIM_DMA 1
 #define iodma_isr dma1_channel1_isr
 
+#ifndef IO_AUX
+#elif IO_AUX == 0xB8
+#define IOTIM2 TIM16
+#define iotim2_isr tim16_fdcan_it0_isr
+#elif IO_AUX == 0xB9
+#define IOTIM2 TIM17
+#define iotim2_isr tim17_fdcan_it1_isr
+#else
+#define IOTIM2 TIM3
+#define iotim2_isr tim34_isr
+#endif
+
 #define USART1_RX_DMA 2
 #define USART1_TX_DMA 3
 #define usart1_tx_dma_isr dma1_channel2_3_isr

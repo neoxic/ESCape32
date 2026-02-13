@@ -400,6 +400,7 @@ void checkcfg(void) {
 	cfg.throt_rev = clamp(cfg.throt_rev, 0, 3);
 	cfg.throt_brk = clamp(cfg.throt_brk, cfg.duty_drag, 100);
 	cfg.throt_set = clamp(cfg.throt_set, 0, cfg.arm ? 0 : 100);
+	cfg.throt_ztc = !!cfg.throt_ztc;
 	cfg.throt_cal = !!cfg.throt_cal;
 	cfg.throt_min = clamp(cfg.throt_min, 900, 1900);
 	cfg.throt_max = clamp(cfg.throt_max, cfg.throt_min + 200, 2100);
@@ -408,14 +409,16 @@ void checkcfg(void) {
 	cfg.analog_max = clamp(cfg.analog_max, cfg.analog_min + 200, 3400);
 #ifdef IO_PA2
 	cfg.input_mode = clamp(cfg.input_mode, 0, 5);
-	cfg.input_chid = cfg.input_mode >= 3 ? clamp(cfg.input_chid, 1, cfg.input_mode == 3 ? 14 : 16) : 0;
+	cfg.input_ch1 = clamp(cfg.input_ch1, 1, cfg.input_mode < 3 ? 0 : cfg.input_mode == 3 ? 14 : 16);
+	cfg.input_ch2 = clamp(cfg.input_ch2, 0, cfg.input_mode < 3 ? 0 : cfg.input_mode == 3 ? 14 : 16);
 #else
 #if defined IO_PA6 || defined ANALOG_CHAN
 	cfg.input_mode = clamp(cfg.input_mode, 0, 1);
 #else
 	cfg.input_mode = 0;
 #endif
-	cfg.input_chid = 0;
+	cfg.input_ch1 = 0;
+	cfg.input_ch2 = 0;
 #endif
 	cfg.telem_mode = clamp(cfg.telem_mode, 0, 4);
 	cfg.telem_phid =
@@ -509,16 +512,14 @@ void resetcom(void) {
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_HIGH | TIM_CCMR1_OC2M_FORCE_HIGH;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_HIGH;
+	int er = TIM_CCER_CC1NE | TIM_CCER_CC1NP | TIM_CCER_CC2NE | TIM_CCER_CC2NP | TIM_CCER_CC3NE | TIM_CCER_CC3NP;
 #else
 	TIM1_CCMR1 = TIM_CCMR1_OC1M_FORCE_LOW | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3M_FORCE_LOW;
-#endif
 	int er = TIM_CCER_CC1NE | TIM_CCER_CC2NE | TIM_CCER_CC3NE;
+#endif
 #ifdef INVERTED_HIGH
 	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
 	TIM1_EGR = TIM_EGR_UG | TIM_EGR_COMG;
@@ -550,7 +551,7 @@ int playmusic(const char *str, int vol) {
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
-	int er = TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
+	int er = TIM_CCER_CC1E | TIM_CCER_CC1NP | TIM_CCER_CC2NE | TIM_CCER_CC2NP | TIM_CCER_CC3E | TIM_CCER_CC3NP;
 #else
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_HIGH;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
@@ -558,9 +559,6 @@ int playmusic(const char *str, int vol) {
 #endif
 #ifdef INVERTED_HIGH
 	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
 	TIM1_PSC = CLK_MHZ / 8 - 1; // 125ns resolution
@@ -607,7 +605,7 @@ void playsound(const char *buf, int vol) { // AU file format, 8-bit linear PCM, 
 #ifdef PWM_ENABLE
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_LOW;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
-	int er = TIM_CCER_CC1E | TIM_CCER_CC2NE | TIM_CCER_CC3E;
+	int er = TIM_CCER_CC1E | TIM_CCER_CC1NP | TIM_CCER_CC2NE | TIM_CCER_CC2NP | TIM_CCER_CC3E | TIM_CCER_CC3NP;
 #else
 	TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2M_FORCE_HIGH;
 	TIM1_CCMR2 = TIM_CCMR2_OC3PE | TIM_CCMR2_OC3M_PWM1;
@@ -615,9 +613,6 @@ void playsound(const char *buf, int vol) { // AU file format, 8-bit linear PCM, 
 #endif
 #ifdef INVERTED_HIGH
 	er |= TIM_CCER_CC1P | TIM_CCER_CC2P | TIM_CCER_CC3P;
-#endif
-#ifdef PWM_ENABLE
-	er |= TIM_CCER_CC1NP | TIM_CCER_CC2NP | TIM_CCER_CC3NP;
 #endif
 	TIM1_CCER = er;
 	TIM1_CCR1 = 0;

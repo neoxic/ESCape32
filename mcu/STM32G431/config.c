@@ -150,6 +150,7 @@ skip:
 	nvic_set_priority(NVIC_DMA1_CHANNEL3_IRQ, 0x80); // USART1_TX
 	nvic_set_priority(NVIC_DMA1_CHANNEL4_IRQ, 0x80); // ADC1
 	nvic_set_priority(NVIC_DMA1_CHANNEL5_IRQ, 0x80); // ADC2
+	nvic_set_priority(NVIC_DMA2_CHANNEL1_IRQ, 0x80); // WS2812
 
 	nvic_enable_irq(NVIC_TIM1_BRK_TIM15_IRQ);
 	nvic_enable_irq(NVIC_TIM1_TRG_TIM17_IRQ);
@@ -161,6 +162,7 @@ skip:
 	nvic_enable_irq(NVIC_DMA1_CHANNEL3_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL4_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL5_IRQ);
+	nvic_enable_irq(NVIC_DMA2_CHANNEL1_IRQ);
 
 	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_TIM15_CH1;
 	DMAMUX1_CxCR(2) = DMAMUX_CxCR_DMAREQ_ID_UART1_RX;
@@ -241,8 +243,6 @@ void initled(void) {
 	TIM16_CR2 = TIM_CR2_CCDS; // CC1 DMA request on UEV
 	TIM16_ARR = CLK_CNT(800000) - 1;
 	TIM16_RCR = 7;
-	nvic_set_priority(NVIC_DMA2_CHANNEL1_IRQ, 0x80);
-	nvic_enable_irq(NVIC_DMA2_CHANNEL1_IRQ);
 	DMAMUX1_CxCR(9) = DMAMUX_CxCR_DMAREQ_ID_TIM16_CH1;
 	DMA2_CPAR(1) = (uint32_t)&TIM16_CCR1;
 	DMA2_CMAR(1) = (uint32_t)led;
