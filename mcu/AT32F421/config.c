@@ -29,6 +29,8 @@
 #define SENS_CHAN 0x6e
 #elif SENS_MAP == 0xA6A3 // A6 (volt), A3 (curr)
 #define SENS_CHAN 0xc3
+#elif SENS_MAP == 0xB2A6A3 // B2 (temp), A6 (volt), A3 (curr)
+#define SENS_CHAN 0x28c3
 #endif
 
 #ifndef ANALOG_CHAN
@@ -81,6 +83,13 @@ void init(void) {
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
 	nvic_set_priority(NVIC_TIM15_IRQ, 0x40);
+#ifdef IO_AUX
+	RCC_APB2ENR |= RCC_APB2ENR_TIM16EN;
+	GPIOB_AFRH |= 0x2; // B8 (TIM16_CH1)
+	GPIOB_PUPDR |= 0x10000; // B8 (pull-up)
+	GPIOB_MODER &= ~0x10000; // B8 (TIM16_CH1)
+	nvic_set_priority(NVIC_TIM16_IRQ, 0x40);
+#endif
 #endif
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
@@ -92,6 +101,7 @@ void init(void) {
 	nvic_enable_irq(NVIC_TIM1_CC_IRQ);
 	nvic_enable_irq(NVIC_TIM3_IRQ);
 	nvic_enable_irq(NVIC_TIM15_IRQ);
+	nvic_enable_irq(NVIC_TIM16_IRQ);
 	nvic_enable_irq(NVIC_USART1_IRQ);
 	nvic_enable_irq(NVIC_USART2_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
