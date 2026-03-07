@@ -546,8 +546,8 @@ void main(void) {
 	TIM_CR1(IFTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 #ifdef HALL_MAP
 	if (!brushed && getcode() != 7) { // Hybrid mode
-		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
+		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCER = TIM_CCER_CC1E; // IC1 on any edge on TI1
 		TIM3_DIER = TIM_DIER_UIE | TIM_DIER_CC1IE;
 		TIM3_PSC = CLK_MHZ / 2 - 1; // 500ns resolution

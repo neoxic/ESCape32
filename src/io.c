@@ -62,11 +62,7 @@ static void setbrake(int x) {
 
 #ifdef IO_AUX
 void iotim2_isr(void) {
-#if IOTIM2 == TIM3
-	int p = TIM3_CCR1; // Pulse period
-	int w = TIM3_CCR2; // Pulse width
-	if (p < 2000) return; // Invalid signal
-#else // TIM16 or TIM17
+#if IOTIM2 == TIM16 || IOTIM2 == TIM17
 	static uint16_t t1;
 	uint16_t t2 = TIM_CCR1(IOTIM2);
 	uint16_t er = TIM_CCER(IOTIM2);
@@ -75,18 +71,20 @@ void iotim2_isr(void) {
 		t1 = t2;
 		return;
 	}
-	int w = t2 - t1;
+	int x = t2 - t1;
+#else
+	int x = TIM_CCR2(IOTIM2);
 #endif
-	if (w < 800 || w > 2200) return; // Invalid signal
-	setbrake(w);
+	if (x < 800 || x > 2200) return; // Invalid signal
+	setbrake(x);
 }
 #endif
 
 void initio(void) {
 	ioirq = entryirq;
 	TIM_BDTR(IOTIM) = TIM_BDTR_MOE;
-	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_CK_INT_N_8;
+	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
 	TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on rising edge on TI1
 	TIM_DIER(IOTIM) = TIM_DIER_UIE | TIM_DIER_CC1IE;
 	TIM_PSC(IOTIM) = CLK_MHZ - 1; // 1us resolution
@@ -95,15 +93,15 @@ void initio(void) {
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
 	TIM_CR1(IOTIM) = TIM_CR1_CEN | TIM_CR1_ARPE | TIM_CR1_URS;
 #ifdef IO_AUX
-#if IOTIM2 == TIM3
-	TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
-	TIM3_CCMR1 = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
-	TIM3_CCER = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC2P; // IC1 on rising edge on TI1, IC2 on falling edge on TI1
-	TIM3_DIER = TIM_DIER_CC2IE;
-#else // TIM16 or TIM17
+#if IOTIM2 == TIM16 || IOTIM2 == TIM17
 	TIM_CCMR1(IOTIM2) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8;
 	TIM_CCER(IOTIM2) = TIM_CCER_CC1E; // IC1 on rising edge on TI1
 	TIM_DIER(IOTIM2) = TIM_DIER_CC1IE;
+#else
+	TIM_CCMR1(IOTIM2) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
+	TIM_SMCR(IOTIM2) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1FP1; // Reset on rising edge on TI1
+	TIM_CCER(IOTIM2) = TIM_CCER_CC2E | TIM_CCER_CC2P; // IC2 on falling edge on TI1
+	TIM_DIER(IOTIM2) = TIM_DIER_CC2IE;
 #endif
 	TIM_PSC(IOTIM2) = CLK_MHZ - 1; // 1us resolution
 	TIM_ARR(IOTIM2) = -1;
@@ -145,8 +143,8 @@ static void entryirq(void) {
 		USART2_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
 #else
 		TIM3_CCER = 0;
-		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_CK_INT_N_8;
+		TIM3_SMCR = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 		TIM3_CCER = TIM_CCER_CC2E | TIM_CCER_CC2P; // IC2 on falling edge on TI1
 		TIM3_SR = ~TIM_SR_CC2IF;
 		TIM3_DIER = TIM_DIER_CC2IE;
@@ -216,6 +214,8 @@ static void entryirq(void) {
 	if (TIM_PSC(IOTIM)) {
 		if (t > 2000) { // Servo/Oneshot125
 			ioirq = calibirq;
+			TIM_DIER(IOTIM) = TIM_DIER_CC1IE;
+			TIM_CR1(IOTIM) = TIM_CR1_CEN;
 			calibirq();
 			return;
 		}
@@ -237,8 +237,8 @@ static void entryirq(void) {
 	dshotarr1 = CLK_CNT(150000 << m) - 1;
 	dshotarr2 = CLK_CNT(375000 << m) - 1;
 	TIM_CCER(IOTIM) = 0;
-	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
+	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_DIER(IOTIM) = TIM_DIER_UIE;
 	TIM_ARR(IOTIM) = dshotarr1; // Frame reset timeout
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
@@ -270,23 +270,21 @@ static void calibirq(void) {
 	}
 	ioirq = servoirq;
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TI1 | TIM_CCMR1_IC1F_DTF_DIV_8_N_8 | TIM_CCMR1_CC2S_IN_TI1 | TIM_CCMR1_IC2F_DTF_DIV_8_N_8;
-	TIM_CCER(IOTIM) = TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC2P; // IC1 on rising edge on TI1, IC2 on falling edge on TI1
+	TIM_CCER(IOTIM) = TIM_CCER_CC2E | TIM_CCER_CC2P; // IC2 on falling edge on TI1
 	TIM_SR(IOTIM) = ~TIM_SR_CC2IF;
 	TIM_DIER(IOTIM) = TIM_DIER_CC2IE;
 }
 
 static void servoirq(void) {
-	int p = TIM_CCR1(IOTIM); // Pulse period
-	int w = TIM_CCR2(IOTIM); // Pulse width
-	if (p < 2000) return; // Invalid signal
-	if (w >= 28 && w <= 32) { // Telemetry request
+	int x = TIM_CCR2(IOTIM);
+	if (x >= 28 && x <= 32) { // Telemetry request
 		IWDG_KR = IWDG_KR_RESET;
 		telreq = 1;
 		return;
 	}
-	if (w < 800 || w > 2200) return; // Invalid signal
+	if (x < 800 || x > 2200) return; // Invalid signal
 	IWDG_KR = IWDG_KR_RESET;
-	setthrot(w);
+	setthrot(x);
 }
 
 static void dshotirq(void) {
@@ -321,8 +319,8 @@ static void dshotreset(void) {
 	DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_CIRC | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 	TIM_ARR(IOTIM) = -1;
 	TIM_EGR(IOTIM) = TIM_EGR_UG;
-	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCMR1(IOTIM) = TIM_CCMR1_CC1S_IN_TRC | TIM_CCMR1_IC1F_CK_INT_N_8;
+	TIM_SMCR(IOTIM) = TIM_SMCR_SMS_RM | TIM_SMCR_TS_TI1F_ED; // Reset on any edge on TI1
 	TIM_CCER(IOTIM) = TIM_CCER_CC1E; // IC1 on any edge on TI1
 	TIM_DIER(IOTIM) = TIM_DIER_CC1DE;
 }
