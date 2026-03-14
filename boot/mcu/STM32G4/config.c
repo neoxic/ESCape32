@@ -30,7 +30,9 @@ void init(void) {
 	RCC_CFGR = RCC_CFGR_SWx_PLL;
 
 	GPIOA_AFRL = 0x00000700; // A2 (USART2_TX)
+#ifdef IO_RXTX
 	GPIOA_AFRH = 0x70000000; // A15 (USART2_RX)
+#endif
 	GPIOA_PUPDR = 0x24000010; // A2 (pull-up)
 	GPIOB_PUPDR = 0x00000000;
 	GPIOA_MODER = 0xebffffef; // A2 (USART2_TX)

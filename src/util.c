@@ -24,6 +24,11 @@
 #define HALL2_PORT B
 #define HALL2_PIN2 3
 #define HALL2_PIN3 5
+#elif HALL_MAP == 0xB357
+#define HALL_PORT B
+#define HALL_PIN1 3
+#define HALL_PIN2 5
+#define HALL_PIN3 7
 #elif HALL_MAP == 0xB358
 #define HALL_PORT B
 #define HALL_PIN1 3

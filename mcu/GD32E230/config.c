@@ -145,7 +145,9 @@ void io_serial(void) {
 	nvic_clear_pending_irq(NVIC_TIM15_IRQ);
 	RCC_APB1ENR |= RCC_APB1ENR_USART2EN;
 	GPIOA_AFRL |= 0x100; // A2 (USART2_TX)
+#ifdef IO_RXTX
 	GPIOA_AFRH |= 0x10000000; // A15 (USART2_RX)
+#endif
 }
 
 void io_analog(void) {

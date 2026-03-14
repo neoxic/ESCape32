@@ -143,6 +143,13 @@ skip:
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (TIM15_CH1)
 	nvic_set_priority(NVIC_TIM1_BRK_TIM15_IRQ, 0x40);
+#ifdef IO_AUX
+	RCC_APB2ENR |= RCC_APB2ENR_TIM8EN;
+	GPIOA_AFRH |= 0x20000000; // A15 (TIM8_CH1)
+	GPIOA_PUPDR |= 0x40000000; // A15 (pull-up)
+	GPIOA_MODER &= ~0x40000000; // A15 (TIM8_CH1)
+	nvic_set_priority(NVIC_TIM8_CC_IRQ, 0x40);
+#endif
 #endif
 	nvic_set_priority(NVIC_USART1_IRQ, 0x80);
 	nvic_set_priority(NVIC_USART2_IRQ, 0x40);
@@ -156,6 +163,7 @@ skip:
 	nvic_enable_irq(NVIC_TIM1_TRG_TIM17_IRQ);
 	nvic_enable_irq(NVIC_TIM2_IRQ);
 	nvic_enable_irq(NVIC_TIM3_IRQ);
+	nvic_enable_irq(NVIC_TIM8_CC_IRQ);
 	nvic_enable_irq(NVIC_USART1_IRQ);
 	nvic_enable_irq(NVIC_USART2_IRQ);
 	nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
@@ -310,7 +318,9 @@ void io_serial(void) {
 	nvic_clear_pending_irq(NVIC_TIM1_BRK_TIM15_IRQ);
 	RCC_APB1ENR1 |= RCC_APB1ENR1_USART2EN;
 	GPIOA_AFRL = (GPIOA_AFRL & ~0xf00) | 0x700; // A2 (USART2_TX)
+#ifdef IO_RXTX
 	GPIOA_AFRH |= 0x70000000; // A15 (USART2_RX)
+#endif
 	DMAMUX1_CxCR(1) = DMAMUX_CxCR_DMAREQ_ID_UART2_RX;
 	DMAMUX1_CxCR(6) = DMAMUX_CxCR_DMAREQ_ID_UART2_TX;
 }

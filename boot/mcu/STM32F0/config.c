@@ -32,7 +32,9 @@ void init(void) {
 #ifdef IO_PA2
 	RCC_APB1ENR |= RCC_APB1ENR_USART2EN;
 	GPIOA_AFRL |= 0x100; // A2 (USART2_TX)
+#ifdef IO_RXTX
 	GPIOA_AFRH |= 0x10000000; // A15 (USART2_RX)
+#endif
 	GPIOA_PUPDR |= 0x10; // A2 (pull-up)
 	GPIOA_MODER &= ~0x10; // A2 (USART2_TX)
 #else
