@@ -66,7 +66,6 @@
 #endif
 
 #ifndef LED_MAP
-#define LED_MAP 0
 #ifdef LED_WS2812
 #define LED_CNT 3
 #else
@@ -96,6 +95,12 @@
 #endif
 #ifndef RPM_PORT
 #define RPM_PORT B
+#endif
+#ifndef BEC_MIN
+#define BEC_MIN 0
+#endif
+#ifndef BEC_MAX
+#define BEC_MAX (BEC_MIN + 3)
 #endif
 
 // Default settings

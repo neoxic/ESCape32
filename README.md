@@ -13,7 +13,7 @@ Features
 + KISS/iBUS/S.Port/CRSF telemetry
 + DSHOT 3D mode, turtle mode, beacon, LED, programming
 + Sine startup mode, brushed mode, hybrid mode (sensored/sensorless)
-+ Proportional brake, drag brake
++ Proportional brake, adjustable drag brake
 + Temperature/voltage/current/stall protection
 + Variable PWM frequency, active freewheeling
 + Customizable startup music/sounds

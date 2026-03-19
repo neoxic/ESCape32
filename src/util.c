@@ -56,7 +56,8 @@
 #define BEC_PIN2 15
 #endif
 
-#if LED_MAP == 0xAF
+#ifndef LED_MAP
+#elif LED_MAP == 0xAF
 #define LED1_PORT A
 #define LED1_PIN 15
 #elif LED_MAP == 0xB8
@@ -142,21 +143,35 @@ void initgpio(void) {
 #endif
 #endif
 #ifdef BEC_MAP
-	int x = cfg.bec;
+	int x = cfg.bec - BEC_MIN;
 #if BEC_MAP == 0xADE // SWD pins
 	if (!(GPIOA_IDR & 0x6000)) { // External pull-down
-		GPIOA_ODR |= x << 13;
+		GPIOA_ODR |= (x & 3) << 13;
 		GPIOA_OSPEEDR &= ~0x3c000000; // A13,A14 (low speed)
 		GPIOA_PUPDR &= ~0x3c000000; // A13,A14 (no pull-up/pull-down)
 		GPIOA_MODER ^= 0x3c000000; // A13,A14 (output)
 	}
 #else
+	int y = GPIO(BEC_PORT, ODR) | (x & 1) << BEC_PIN1;
+	int z = GPIO(BEC_PORT, MODER) & ~(2 << BEC_PIN1 * 2);
+#ifdef BEC_PIN2
 #if BEC_PIN2 >= 1
-	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) << (BEC_PIN2 - 1);
+	y |= (x & 2) << (BEC_PIN2 - 1);
 #else
-	GPIO(BEC_PORT, ODR) |= (x & 1) << BEC_PIN1 | (x & 2) >> (1 - BEC_PIN2);
+	y |= (x & 2) >> (1 - BEC_PIN2);
 #endif
-	GPIO(BEC_PORT, MODER) &= ~(2 << BEC_PIN1 * 2 | 2 << BEC_PIN2 * 2);
+	z &= ~(2 << BEC_PIN2 * 2);
+#ifdef BEC_PIN3
+#if BEC_PIN3 >= 2
+	y |= (x & 4) << (BEC_PIN3 - 2);
+#else
+	y |= (x & 4) >> (2 - BEC_PIN3);
+#endif
+	z &= ~(2 << BEC_PIN3 * 2);
+#endif
+#endif
+	GPIO(BEC_PORT, ODR) = y;
+	GPIO(BEC_PORT, MODER) = z;
 #endif
 #endif
 #ifdef RPM_PIN
@@ -453,7 +468,7 @@ void checkcfg(void) {
 	cfg.volume = clamp(cfg.volume, 0, 100);
 	cfg.beacon = clamp(cfg.beacon, 0, 100);
 #ifdef BEC_MAP
-	cfg.bec = clamp(cfg.bec, 0, 3);
+	cfg.bec = clamp(cfg.bec, BEC_MIN, BEC_MAX);
 #else
 	cfg.bec = 0;
 #endif
