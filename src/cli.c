@@ -57,11 +57,12 @@
 	XX(36, val, prot_volt) \
 	XX(37, val, prot_cells) \
 	XX(38, val, prot_curr) \
-	XX(39, str, music) \
-	XX(40, val, volume) \
-	XX(41, val, beacon) \
-	XX(42, val, bec) \
-	XX(43, val, led) \
+	XX(39, val, prot_park) \
+	XX(40, str, music) \
+	XX(41, val, volume) \
+	XX(42, val, beacon) \
+	XX(43, val, bec) \
+	XX(44, val, led) \
 
 static int beep = -1;
 

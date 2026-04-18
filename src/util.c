@@ -174,8 +174,12 @@ void initgpio(void) {
 	GPIO(BEC_PORT, MODER) = z;
 #endif
 #endif
-#ifdef RPM_PIN
-	GPIO(RPM_PORT, MODER) = (GPIO(RPM_PORT, MODER) & ~(3 << RPM_PIN * 2)) | 1 << RPM_PIN * 2;
+#ifdef ERPM_PIN
+	GPIO(ERPM_PORT, MODER) = (GPIO(ERPM_PORT, MODER) & ~(3 << ERPM_PIN * 2)) | 1 << ERPM_PIN * 2;
+#endif
+#ifdef PARK_PIN
+	GPIO(PARK_PORT, PUPDR) |= 1 << PARK_PIN * 2;
+	GPIO(PARK_PORT, MODER) &= ~(3 << PARK_PIN * 2);
 #endif
 }
 
@@ -405,7 +409,7 @@ void checkcfg(void) {
 	cfg.revdir = !!cfg.revdir;
 	cfg.brushed = !!cfg.brushed;
 	cfg.timing = clamp(cfg.timing, 1, 31);
-	cfg.sine_range = cfg.sine_range && cfg.damp && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
+	cfg.sine_range = cfg.sine_range && !cfg.brushed ? clamp(cfg.sine_range, 5, 25) : 0;
 	cfg.sine_power = clamp(cfg.sine_power, 1, 15);
 	cfg.freq_min = clamp(cfg.freq_min, 16, 48);
 	cfg.freq_max = clamp(cfg.freq_max, cfg.freq_min, 96);
@@ -415,7 +419,7 @@ void checkcfg(void) {
 	cfg.duty_ramp = clamp(cfg.duty_ramp, 0, 100);
 	cfg.duty_rate = clamp(cfg.duty_rate, 1, 100);
 	cfg.duty_drag = clamp(cfg.duty_drag, 0, 100);
-	cfg.duty_lock = clamp(cfg.duty_lock, 0, cfg.damp && !cfg.brushed ? 2 : 0);
+	cfg.duty_lock = clamp(cfg.duty_lock, 0, cfg.brushed ? 0 : 2);
 	cfg.throt_mode = clamp(cfg.throt_mode, 0, IO_ANALOG ? 0 : cfg.duty_lock ? 1 : 3);
 	cfg.throt_rev = clamp(cfg.throt_rev, 0, 3);
 	cfg.throt_brk = clamp(cfg.throt_brk, cfg.duty_drag, 100);
@@ -461,9 +465,14 @@ void checkcfg(void) {
 	cfg.prot_cells = 0;
 #endif
 #if SENS_CNT >= 2 && CURR_MUL > 0
-	cfg.prot_curr = clamp(cfg.prot_curr, 0, 500);
+	cfg.prot_curr = clamp(cfg.prot_curr, 0, 999);
 #else
 	cfg.prot_curr = 0;
+#endif
+#ifdef PARK_PIN
+	cfg.prot_park = clamp(cfg.prot_park, 0, 4);
+#else
+	cfg.prot_park = 0;
 #endif
 	cfg.volume = clamp(cfg.volume, 0, 100);
 	cfg.beacon = clamp(cfg.beacon, 0, 100);

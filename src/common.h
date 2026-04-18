@@ -98,6 +98,7 @@ typedef struct {
 	char prot_volt;
 	char prot_cells;
 	uint16_t prot_curr;
+	char prot_park;
 	char music[256];
 	char volume;
 	char beacon;

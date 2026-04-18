@@ -93,8 +93,11 @@
 #ifndef SERIAL_BR
 #define SERIAL_BR 460800
 #endif
-#ifndef RPM_PORT
-#define RPM_PORT B
+#ifndef ERPM_PORT
+#define ERPM_PORT B
+#endif
+#ifndef PARK_PORT
+#define PARK_PORT B
 #endif
 #ifndef BEC_MIN
 #define BEC_MIN 0
@@ -225,6 +228,9 @@
 #endif
 #ifndef PROT_CURR
 #define PROT_CURR 0
+#endif
+#ifndef PROT_PARK
+#define PROT_PARK 0
 #endif
 #ifndef MUSIC
 #define MUSIC "dfa#"

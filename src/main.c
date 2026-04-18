@@ -64,6 +64,7 @@ const Cfg cfgdata = {
 	.prot_volt = PROT_VOLT,     // Low voltage cutoff per battery cell (V/10) [0 - off, 28..38]
 	.prot_cells = PROT_CELLS,   // Number of battery cells [0 - auto, 1..24]
 	.prot_curr = PROT_CURR,     // Maximum current (A) [0..500]
+	.prot_park = PROT_PARK,     // Parking speed [0..4]
 	.music = MUSIC,             // Startup music
 	.volume = VOLUME,           // Sound volume (%) [0..100]
 	.beacon = BEACON,           // Beacon volume (%) [0..100]
@@ -130,9 +131,9 @@ static void nextstep(void) {
 		TIM1_CCR2 = DEAD_TIME + (sinedata[b] * p >> 7);
 		TIM1_CCR3 = DEAD_TIME + (sinedata[c] * p >> 7);
 		TIM1_CR1 = TIM_CR1_CEN | TIM_CR1_ARPE;
-#ifdef RPM_PIN
-		if (step == 1) GPIO(RPM_PORT, BSRR) = 1 << (RPM_PIN + 16);
-		else if (step == 181) GPIO(RPM_PORT, BSRR) = 1 << RPM_PIN;
+#ifdef ERPM_PIN
+		if (step == 1) GPIO(ERPM_PORT, BSRR) = 1 << (ERPM_PIN + 16);
+		else if (step == 181) GPIO(ERPM_PORT, BSRR) = 1 << ERPM_PIN;
 #endif
 		if (prep) return;
 		TIM1_CCMR1 = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM1 | TIM_CCMR1_OC2PE | TIM_CCMR1_OC2M_PWM1;
@@ -318,9 +319,9 @@ static void nextstep(void) {
 	buf[step - 1] = hall > 4000 ? hall << IFTIM_XRES : ival;
 	if (sync < 6) return;
 	ertm = (buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]) >> (IFTIM_XRES + 1); // Electrical revolution time (us)
-#ifdef RPM_PIN
-	if (step == 1) GPIO(RPM_PORT, BSRR) = 1 << (RPM_PIN + 16);
-	else if (step == 4) GPIO(RPM_PORT, BSRR) = 1 << RPM_PIN;
+#ifdef ERPM_PIN
+	if (step == 1) GPIO(ERPM_PORT, BSRR) = 1 << (ERPM_PIN + 16);
+	else if (step == 4) GPIO(ERPM_PORT, BSRR) = 1 << ERPM_PIN;
 #endif
 }
 
@@ -513,6 +514,43 @@ static void beep(void) {
 	beepval = -1;
 }
 
+#ifdef PARK_PIN
+static char park1;
+static uint16_t park2, park3;
+
+static int park(void) {
+	if (!--park3) return 0;
+	if (park1 == 3 || ++park2 < 800) return 1;
+	int x = -1;
+	for (int i = 0, j = 0; j < 4; ++j) {
+		int y = GPIO(PARK_PORT, IDR) & (1 << PARK_PIN);
+		if (x == y) continue;
+		if (++i == 20) return 0; // Unstable signal
+		x = y;
+		j = 0;
+	}
+	switch (park1) {
+		case 0:
+			if (!x) return 1;
+			park1 = 1;
+			break;
+		case 1:
+			if (x) return 1;
+			park1 = 2;
+			park3 = -1;
+			break;
+		case 2:
+			if (!x) return 1;
+			park1 = 3;
+			park3 = (0xffff - park3) >> 1;
+			reverse = !reverse;
+			break;
+	}
+	park2 = 0;
+	return 1;
+}
+#endif
+
 void main(void) {
 	memcpy(_cfg_start, _cfg, _cfg_end - _cfg_start); // Copy configuration to SRAM
 	checkcfg();
@@ -620,6 +658,14 @@ void main(void) {
 				if (!running) laststep();
 			}
 			if (sync < 6 || erpm < 800 || lock == 2) { // Drag brake
+#ifdef PARK_PIN
+				if (cfg.prot_park && running && park()) { // Parking
+					sine = (1000 << IFTIM_XRES) / cfg.prot_park;
+					ertm = 100000000;
+					erpm = 0;
+					goto skipduty;
+				}
+#endif
 				curduty = lock ? min(brake, 100 - cutback) : brake * 20; // 60% cutback at 15C above prot_temp
 				running = 0;
 				goto setduty;
@@ -627,6 +673,11 @@ void main(void) {
 			boost = 0; // Coasting
 			goto calcduty;
 		}
+#ifdef PARK_PIN
+		park1 = 0;
+		park2 = 0;
+		park3 = -1;
+#endif
 		if (input < 0) { // Reverse
 			if ((cfg.throt_mode == 2 && braking != 2) || cfg.throt_mode == 3) { // Proportional brake
 				curduty = scale(input, -2000, 0, cfg.throt_brk * 20, brake * 20);
@@ -656,8 +707,7 @@ void main(void) {
 				int a = step - 1;
 				int b = a / 60;
 				int c = b * 60;
-				if (reverse && ++b == 6) b = 0;
-				IFTIM_OCR = sine * (reverse ? a - c + 1 : c - a + 60); // Commutation delay
+				IFTIM_OCR = sine * (reverse ? (void)(++b == 6 && (b = 0)), a - c + 1 : c - a + 60); // Commutation delay
 				TIM_ARR(IFTIM) = (1 << (IFTIM_XRES + 16)) - 1;
 				TIM_EGR(IFTIM) = TIM_EGR_UG;
 				step = b + 1;
