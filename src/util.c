@@ -315,7 +315,7 @@ void hsictl(int x) {
 	RCC_CR = (cr & ~0xf8) | clamp(tv + x, 0, 0x1f) << 3;
 }
 
-char crc8(const char *buf, int len) {
+uint8_t crc8(const char *buf, int len) {
 	static const char tbl[] = {
 		0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15, 0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d,
 		0x70, 0x77, 0x7e, 0x79, 0x6c, 0x6b, 0x62, 0x65, 0x48, 0x4f, 0x46, 0x41, 0x54, 0x53, 0x5a, 0x5d,
@@ -334,12 +334,12 @@ char crc8(const char *buf, int len) {
 		0xae, 0xa9, 0xa0, 0xa7, 0xb2, 0xb5, 0xbc, 0xbb, 0x96, 0x91, 0x98, 0x9f, 0x8a, 0x8d, 0x84, 0x83,
 		0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb, 0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3,
 	};
-	char crc = 0;
+	uint8_t crc = 0;
 	while (len--) crc = tbl[crc ^ *buf++];
 	return crc;
 }
 
-char crc8dvbs2(const char *buf, int len) {
+uint8_t crc8dvbs2(const char *buf, int len) {
 	static const char tbl[] = {
 		0x00, 0xd5, 0x7f, 0xaa, 0xfe, 0x2b, 0x81, 0x54, 0x29, 0xfc, 0x56, 0x83, 0xd7, 0x02, 0xa8, 0x7d,
 		0x52, 0x87, 0x2d, 0xf8, 0xac, 0x79, 0xd3, 0x06, 0x7b, 0xae, 0x04, 0xd1, 0x85, 0x50, 0xfa, 0x2f,
@@ -358,8 +358,29 @@ char crc8dvbs2(const char *buf, int len) {
 		0xd6, 0x03, 0xa9, 0x7c, 0x28, 0xfd, 0x57, 0x82, 0xff, 0x2a, 0x80, 0x55, 0x01, 0xd4, 0x7e, 0xab,
 		0x84, 0x51, 0xfb, 0x2e, 0x7a, 0xaf, 0x05, 0xd0, 0xad, 0x78, 0xd2, 0x07, 0x53, 0x86, 0x2c, 0xf9,
 	};
-	char crc = 0;
+	uint8_t crc = 0;
 	while (len--) crc = tbl[crc ^ *buf++];
+	return crc;
+}
+
+uint16_t crc16ccitt(const char *buf, int len) {
+	uint16_t crc = 0;
+	while (len--) {
+		uint8_t val = crc ^ *buf++;
+		val ^= val << 4;
+		crc = crc >> 8 ^ val << 8 ^ val << 3 ^ val >> 4;
+	}
+	return crc;
+}
+
+uint16_t crc16xmodem(const char *buf, int len) {
+	uint16_t crc = 0;
+	while (len--) {
+		uint8_t val = crc >> 8 ^ *buf++;
+		val ^= val >> 4;
+		crc = crc << 8 ^ val << 12 ^ val << 5 ^ val;
+
+	}
 	return crc;
 }
 
@@ -432,9 +453,9 @@ void checkcfg(void) {
 	cfg.analog_min = clamp(cfg.analog_min, 0, 3200);
 	cfg.analog_max = clamp(cfg.analog_max, cfg.analog_min + 200, 3400);
 #ifdef IO_PA2
-	cfg.input_mode = clamp(cfg.input_mode, 0, 5);
-	cfg.input_ch1 = clamp(cfg.input_ch1, 1, cfg.input_mode < 3 ? 0 : cfg.input_mode == 3 ? 14 : 16);
-	cfg.input_ch2 = clamp(cfg.input_ch2, 0, cfg.input_mode < 3 ? 0 : cfg.input_mode == 3 ? 14 : 16);
+	cfg.input_mode = clamp(cfg.input_mode, 0, 7);
+	cfg.input_ch1 = clamp(cfg.input_ch1, 1, cfg.input_mode < 3 ? 0 : 32);
+	cfg.input_ch2 = clamp(cfg.input_ch2, 0, cfg.input_mode < 3 ? 0 : 32);
 #else
 #if defined IO_PA6 || defined ANALOG_CHAN
 	cfg.input_mode = clamp(cfg.input_mode, 0, 1);
@@ -444,9 +465,10 @@ void checkcfg(void) {
 	cfg.input_ch1 = 0;
 	cfg.input_ch2 = 0;
 #endif
-	cfg.telem_mode = clamp(cfg.telem_mode, 0, 4);
+	cfg.telem_mode = clamp(cfg.telem_mode, 0, 6);
 	cfg.telem_phid =
-		cfg.telem_mode == 2 ? clamp(cfg.telem_phid, 1, 2):
+		cfg.telem_mode == 2 ||
+		cfg.telem_mode == 5 ? clamp(cfg.telem_phid, 1, 2):
 		cfg.telem_mode == 3 ? clamp(cfg.telem_phid, 1, 28):
 		cfg.input_mode == 4 ? clamp(cfg.telem_phid, 0, 4) : 0;
 	cfg.telem_poles = clamp(cfg.telem_poles & ~1, 2, 100);
@@ -481,11 +503,7 @@ void checkcfg(void) {
 #else
 	cfg.bec = 0;
 #endif
-#if LED_CNT > 0
 	cfg.led &= (1 << LED_CNT) - 1;
-#else
-	cfg.led = 0;
-#endif
 }
 
 int savecfg(void) {
@@ -568,10 +586,10 @@ int playmusic(const char *str, int vol) {
 	static const uint16_t arr[] = {15287, 14429, 13619, 12856, 12133, 11452, 10810, 10203, 9630, 9090, 8579, 8097, 7643};
 	char *end;
 	int tmp = strtol(str, &end, 10); // Tempo
-	if (str == end) tmp = 125; // 120 BPM by default
+	if (str == end) tmp = 2000; // 120 BPM by default
 	else {
 		if (tmp < 10 || tmp > 999) return 0; // Sanity check
-		tmp = 15000 / tmp;
+		tmp = 240000 / tmp;
 		str = end;
 	}
 	if (!vol || ertm || busy) return 0;

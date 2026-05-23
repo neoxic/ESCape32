@@ -39,7 +39,7 @@
 #define ADC1_BASE ADC_BASE
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
-static char len, ain;
+static uint8_t len, ain;
 static uint16_t buf[6];
 
 void init(void) {

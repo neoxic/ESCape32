@@ -45,7 +45,7 @@
 #endif
 #define TIM2_OR1 MMIO32(TIM2_BASE + 0x50)
 
-static char len, ain;
+static uint8_t len, ain;
 static uint16_t buf[6];
 
 void init(void) {

@@ -45,7 +45,7 @@
 #define ADC1_BASE ADC_BASE
 #define COMP_CSR MMIO32(SYSCFG_COMP_BASE + 0x1c)
 
-static char len, ain;
+static uint8_t len, ain;
 static uint16_t buf[6];
 #ifdef LED_WS2812
 static uint16_t led[5];
@@ -147,7 +147,7 @@ void initled(void) {
 }
 
 void ledctl(int x) {
-	static int y = -1;
+	static int8_t y = -1;
 	if (DMA1_CCR(1) & DMA_CCR_EN) { // DMA channel is shared with ADC
 		y = x;
 		return;

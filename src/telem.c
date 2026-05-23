@@ -28,30 +28,46 @@
 
 static int ibusfunc(int len);
 static int sportfunc(int len);
+static int msbfunc(int len);
+static int hottfunc(int len);
 static int (*iofunc)(int len);
-static char iobuf[16];
+static char iocnt, iobuf[45] __attribute__((aligned(2)));
+static char *ioptr = iobuf;
+static char *ioend = iobuf;
 
 void inittelem(void) {
-	USART1_BRR = CLK_CNT(115200);
+#ifndef AT32F4
+	USART1_RTOR = 10;
+	USART1_CR2 = USART_CR2_RTOEN;
+#endif
 	switch (telmode) {
+		case 0: // KISS
+		case 1: // KISS auto
+			USART1_BRR = CLK_CNT(115200);
+			break;
 		case 2: // iBUS
 			iofunc = ibusfunc;
-#ifndef AT32F4
-			USART1_RTOR = 12; // TX delay ~100us
-			USART1_CR2 = USART_CR2_RTOEN;
-#endif
+			USART1_BRR = CLK_CNT(115200);
 			break;
 		case 3: // S.Port
 			iofunc = sportfunc;
 			USART1_BRR = CLK_CNT(57600);
 #ifndef AT32F4
-			USART1_RTOR = 26; // TX delay ~450us
-			USART1_CR2 = USART_CR2_RTOEN | USART_CR2_RXINV | USART_CR2_TXINV;
+			USART1_RTOR = 26; // ~450us
+			USART1_CR2 |= USART_CR2_RXINV | USART_CR2_TXINV;
 			GPIOB_PUPDR = (GPIOB_PUPDR & ~0x3000) | 0x2000; // B6 (pull-down)
 #endif
 			break;
 		case 4: // CRSF
 			USART1_BRR = CLK_CNT(416666);
+			break;
+		case 5: // MSB
+			iofunc = msbfunc;
+			USART1_BRR = CLK_CNT(38400);
+			break;
+		case 6: // HoTT
+			iofunc = hottfunc;
+			USART1_BRR = CLK_CNT(19200);
 			break;
 	}
 	if (iofunc) {
@@ -65,11 +81,11 @@ void inittelem(void) {
 	DMA_CMAR(USART1_DMA_BASE, USART1_RX_DMA) = (uint32_t)iobuf;
 	DMA_CPAR(USART1_DMA_BASE, USART1_TX_DMA) = (uint32_t)&USART1_TDR;
 	DMA_CMAR(USART1_DMA_BASE, USART1_TX_DMA) = (uint32_t)iobuf;
+	DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA) = sizeof iobuf;
 }
 
 void usart1_isr(void) {
-	int cr = USART1_CR1;
-	if (cr & USART_CR1_TCIE) goto reading;
+	if (USART1_CR1 & USART_CR1_TCIE) goto reading;
 #ifdef AT32F4
 	USART1_SR, USART1_DR; // Clear flags
 #else
@@ -78,6 +94,7 @@ void usart1_isr(void) {
 #endif
 	int len = iofunc(sizeof iobuf - DMA_CNDTR(USART1_DMA_BASE, USART1_RX_DMA));
 	if (len) {
+		if (len < 0) return;
 #ifdef AT32F4
 		USART1_SR = ~USART_SR_TC;
 #else
@@ -119,8 +136,8 @@ static int ibusresp(char a, int x) {
 
 static int ibusfunc(int len) {
 	static const uint16_t type[] = {0x201, 0x201, 0x203, 0x205, 0x206, 0x202};
-	if (len != 4 || iobuf[0] != 4) return 0; // Invalid frame
-	char a = iobuf[1];
+	if (len != 4 || iobuf[0] != 4) return 0;
+	int a = iobuf[1];
 	if (a + (iobuf[2] | iobuf[3] << 8) != 0xfffb) return 0; // Invalid checksum
 	int n = (a & 0xf) - (cfg.telem_phid - 1) * 6 - 1;
 	if (n < 0 || n > 5) return 0;
@@ -166,9 +183,8 @@ static int sportresp(int t, int v) {
 
 static int sportfunc(int len) {
 	static const uint16_t type[] = {0xb70, 0x400, 0x210, 0x200, 0xb30, 0x500};
-	static int n;
-	if (len != 2 || iobuf[0] != 0x7e) return 0; // Invalid frame
-	if ((iobuf[1] & 0x1f) != cfg.telem_phid - 1) return 0;
+	static uint8_t n;
+	if (len != 2 || iobuf[0] != 0x7e || (iobuf[1] & 0x1f) != cfg.telem_phid - 1) return 0;
 	if (n == 6) n = 0;
 	int t = type[n];
 	switch (n++) {
@@ -182,9 +198,77 @@ static int sportfunc(int len) {
 	return 0;
 }
 
-void kisstelem(void) {
+static int msbresp(char a, int x) {
+	iobuf[0] = a;
+	iobuf[1] = x << 1;
+	iobuf[2] = x >> 7;
+	return 3;
+}
+
+static int msbfunc(int len) {
+	static const char type[] = {6, 6, 1, 2, 11, 5};
+	if (len != 1) return 0;
+	int a = iobuf[0];
+	if (a == 0x5a) { // "Clear" command
+		csum = 0;
+		return 0;
+	}
+	int n = a - (cfg.telem_phid - 1) * 6 - 4;
+	if (n < 0 || n > 5) return 0;
+	a = a << 4 | type[n];
+	switch (n) {
+		case 0: return msbresp(a, temp1 * 10);
+		case 1: return msbresp(a, temp2 * 10);
+		case 2: return msbresp(a, volt * 205 >> 11);
+		case 3: return msbresp(a, curr * 205 >> 11);
+		case 4: return msbresp(a, csum);
+		case 5: return msbresp(a, erpm / (cfg.telem_poles * 50));
+	}
+	return 0;
+}
+
+static int hottfunc(int len) {
+	if (len != 2 || iobuf[0] != 0x80 || iobuf[1] != 0x8c) return 0;
+	static int t, u, v, c, r;
+	int a, b;
+	iobuf[0] = 0x7c;
+	iobuf[1] = 0x8c;
+	iobuf[2] = 0x00;
+	iobuf[3] = 0xc0;
+	iobuf[4] = 0x00;
+	iobuf[5] = 0x00;
+	iobuf[6] = a = volt * 205 >> 11;
+	iobuf[7] = a >> 8;
+	iobuf[8] = v = min(v, a);
+	iobuf[9] = v >> 8;
+	iobuf[10] = csum;
+	iobuf[11] = csum >> 8;
+	iobuf[12] = a = temp1 + 20;
+	iobuf[13] = t = max(t, a);
+	iobuf[14] = a = curr * 205 >> 11;
+	iobuf[15] = a >> 8;
+	iobuf[16] = c = max(c, a);
+	iobuf[17] = c >> 8;
+	iobuf[18] = a = min(erpm / (cfg.telem_poles * 5), 0xffff);
+	iobuf[19] = a >> 8;
+	iobuf[20] = r = max(r, a);
+	iobuf[21] = r >> 8;
+	iobuf[22] = a = temp2 + 20;
+	iobuf[23] = u = max(u, a);
+	memset(iobuf + 24, 0, 19);
+	iobuf[43] = 0x7d;
+	for (a = 0, b = 0; a < 44; b += iobuf[a++]);
+	iobuf[44] = b;
+	iocnt = 5;
+	ioptr = iobuf;
+	ioend = iobuf + 45;
+	USART1_CR1 = USART_CR1_UE | USART_CR1_TE;
+	return -1;
+}
+
+static void sendkiss(void) {
 	if (DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) & DMA_CCR_EN) return;
-	int r = erpm * 41 >> 12;
+	int a = erpm * 41 >> 12;
 	iobuf[0] = temp1;
 	iobuf[1] = volt >> 8;
 	iobuf[2] = volt;
@@ -192,17 +276,17 @@ void kisstelem(void) {
 	iobuf[4] = curr;
 	iobuf[5] = csum >> 8;
 	iobuf[6] = csum;
-	iobuf[7] = r >> 8;
-	iobuf[8] = r;
+	iobuf[7] = a >> 8;
+	iobuf[8] = a;
 	iobuf[9] = crc8(iobuf, 9);
 	DMA_CNDTR(USART1_DMA_BASE, USART1_TX_DMA) = 10;
 	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
-static void crsftelem(void) {
-	static int n;
-	int a, b, len = 0;
+static void sendcrsf(void) {
 	if (DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) & DMA_CCR_EN) return;
+	static char n;
+	int a, b, len = 0;
 	iobuf[0] = 0xc8;
 	switch (n++) {
 		case 0: // Temperature
@@ -251,18 +335,32 @@ static void crsftelem(void) {
 	DMA_CCR(USART1_DMA_BASE, USART1_TX_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_8BIT | DMA_CCR_MSIZE_8BIT;
 }
 
-void autotelem(void) {
-	static int n;
-	int x = 0;
+void sendtelem(void) {
+	if (telreq && !telmode) { // KISS
+		sendkiss();
+		telreq = 0;
+	}
+	if (tick & 0xf) return; // 16kHz -> 1kHz
+	if (ioptr != ioend) {
+		if (iocnt) {
+			--iocnt;
+			return;
+		}
+		USART1_TDR = *ioptr++; // Clear TXE+TC
+		if (ioptr == ioend) USART1_CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_TCIE;
+	}
+	if (tick & 0x1f0) return; // 1ms -> 32ms
 	switch (telmode) {
-		case 1: // KISS
-			kisstelem();
+		case 1: // KISS auto
+			sendkiss();
 			break;
 		case 4: // CRSF
-			crsftelem();
+			sendcrsf();
 			break;
 	}
 	if (!dshotext) return;
+	static char n;
+	int x = 0;
 	switch (n++) { // Extended DSHOT telemetry
 		case 0:
 			x = 0x200 | (temp1 & 0xff); // ESC temperature (C)

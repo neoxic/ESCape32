@@ -36,7 +36,7 @@
 #define IOTIM_IDR (GPIOA_IDR & 0x4) // A2
 #define IOTIM_DMA 1
 #define iotim_isr tim1_brk_tim15_isr
-#define iodma_isr dma1_channel1_isr
+#define iotim_dma_isr dma1_channel1_isr
 
 #define IOTIM2 TIM8
 #define iotim2_isr tim8_cc_isr

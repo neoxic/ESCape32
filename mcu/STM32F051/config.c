@@ -48,7 +48,7 @@
 #define COMP_SHIFT 0
 #endif
 
-static char len, ain;
+static uint8_t len, ain;
 static uint16_t buf[6];
 
 void init(void) {

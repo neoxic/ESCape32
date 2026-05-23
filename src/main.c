@@ -17,7 +17,7 @@
 
 #include "common.h"
 
-#define REVISION 15
+#define REVISION 16
 #define REVPATCH 0
 
 const Cfg cfgdata = {
@@ -52,11 +52,11 @@ const Cfg cfgdata = {
 	.throt_max = THROT_MAX,     // Maximum throttle setpoint (us)
 	.analog_min = ANALOG_MIN,   // Minimum analog throttle setpoint (mV)
 	.analog_max = ANALOG_MAX,   // Maximum analog throttle setpoint (mV)
-	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF)
-	.input_ch1 = INPUT_CH1,     // Throttle channel [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
-	.input_ch2 = INPUT_CH2,     // Auxiliary channel [0 - off, 1..14 - iBUS, 1..16 - SBUS/SBUS2/CRSF]
-	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF)
-	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..2 - iBUS, 1..28 - S.Port, 1..4 - SBUS2]
+	.input_mode = INPUT_MODE,   // Input mode (0 - servo/Oneshot125/DSHOT, 1 - analog, 2 - serial, 3 - iBUS, 4 - SBUS/SBUS2, 5 - CRSF, 6 - EXBUS, 7 - HoTT)
+	.input_ch1 = INPUT_CH1,     // Throttle channel [0 - off, 1..32]
+	.input_ch2 = INPUT_CH2,     // Auxiliary channel [0 - off, 1..32]
+	.telem_mode = TELEM_MODE,   // Telemetry mode (0 - KISS, 1 - KISS auto, 2 - iBUS, 3 - S.Port, 4 - CRSF, 5 - MSB, 6 - HoTT)
+	.telem_phid = TELEM_PHID,   // Telemetry physical ID [0 - off, 1..2 - iBUS/MSB, 1..4 - SBUS2, 1..28 - S.Port]
 	.telem_poles = TELEM_POLES, // Number of motor poles for RPM telemetry [2..100]
 	.prot_stall = PROT_STALL,   // Stall protection (ERPM) [0 - off, 1800..3200]
 	.prot_temp = PROT_TEMP,     // Temperature threshold (C) [0 - off, 60..140]
@@ -77,11 +77,12 @@ Cfg cfg = cfgdata;
 
 int throt, brake, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval = -1;
 char analog, telreq, telmode, flipdir, beacon, dshotext, auxup;
+uint32_t tick;
 
-static int oldstep, step, sine, sync, ival, cutback, led;
-static char prep, fast, lock, tick, ready, reverse;
-static uint32_t tickms, tickmsv;
-static volatile char tickmsf;
+static int oldstep, step, sine, ival, cutback;
+static char prep, sync, fast, lock, led, ready, reverse;
+static uint32_t tickv;
+static volatile char tickf;
 #ifndef HALL_MAP
 static const int hall;
 #else
@@ -429,7 +430,7 @@ void adcdata(int t, int u, int v, int c, int a) {
 	volt = smooth(&sv, v * VOLT_MUL * 131 >> 17, 7); // V/100
 	curr = smooth(&sc, c * CURR_MUL * 205 >> 11, 4); // A/100
 	i += curr; // Current integral
-	if (!(tickms & 0x3ff)) {
+	if (!(tick & 0x3ff0)) {
 		csum = (q += i >> 10) * 91 >> 15; // mAh
 		i = 0;
 	}
@@ -455,27 +456,22 @@ void adcdata(int t, int u, int v, int c, int a) {
 void sys_tick_handler(void) {
 	SCB_ICSR = SCB_ICSR_PENDSVSET; // Continue with low priority
 	SCB_SCR = 0; // Resume main loop
-	if (++tick & 15) return; // 16kHz -> 1kHz
-	if (++tickms == tickmsv) tickmsf = 0;
+	if (++tick == tickv) tickf = 0;
 }
 
-void delay(int ms, Func f) {
+void delay(uint32_t x, void (*f)(void)) {
 	__disable_irq();
-	tickmsv = tickms + ms;
-	tickmsf = 1;
+	tickv = tick + x;
+	tickf = 1;
 	__enable_irq();
-	while (tickmsf) f();
+	while (tickf) f();
 }
 
 void pend_sv_handler(void) {
-	static int a = -1;
-	if (telreq && !telmode) { // Telemetry request
-		kisstelem();
-		telreq = 0;
-	}
-	if (tick & 15) return; // 16kHz -> 1kHz
+	sendtelem();
+	if (tick & 0xf) return; // 16kHz -> 1kHz
 	adctrig();
-	if (!(tickms & 31)) autotelem(); // Telemetry every 32ms
+	static char a = -1;
 	int b = cfg.led ? cfg.led : led;
 	if (a != b) ledctl(a = b); // Update LED
 }
@@ -508,14 +504,14 @@ static void beep(void) {
 	int i[10], n = 0, x = beepval, vol = max(cfg.volume, 25);
 	while (i[n++] = x % 10, x /= 10);
 	while (n--) {
-		if (x++) delay(500, delayf);
+		if (x++) delay(8000, delayf);
 		playmusic(values[i[n]], vol);
 	}
 	beepval = -1;
 }
 
 #ifdef PARK_PIN
-static char park1;
+static uint8_t park1;
 static uint16_t park2, park3;
 
 static int park(void) {
@@ -617,7 +613,7 @@ void main(void) {
 		else playmusic(str, cfg.volume);
 		if (cfg.prot_volt) { // Report the number of battery cells
 			beepval = cells;
-			delay(250, delayf);
+			delay(4000, delayf);
 			beep();
 		}
 	}
@@ -824,7 +820,7 @@ void main(void) {
 	tick:
 		SCB_SCR = SCB_SCR_SLEEPONEXIT; // Suspend main loop
 		__WFI();
-		if (tick & 15) continue; // 16kHz -> 1kHz
+		if (tick & 0xf) continue; // 16kHz -> 1kHz
 #ifndef ANALOG
 		if (++auxup == 100) { // Restore brake after 100ms timeout
 			brake = cfg.duty_drag;
@@ -839,9 +835,9 @@ void main(void) {
 #ifdef LED_STAT
 		int x = 0;
 		if (running) {
-			if ((tickms << (throt < 0) & 0x1ff) < (sine ? 0x180 : 0x100)) x = LED_CNT >= 2 ? 2 : 1;
+			if ((tick << (throt < 0) & 0x1fff) < (sine ? 0x1800 : 0x1000)) x = LED_CNT >= 2 ? 2 : 1;
 		} else if (curduty) {
-			if ((tickms & (lock ? 0x2ff : 0x3ff)) < 0x40) x = LED_CNT >= 3 ? 4 : LED_CNT;
+			if ((tick & (lock ? 0x2fff : 0x3fff)) < 0x400) x = LED_CNT >= 3 ? 4 : LED_CNT;
 		}
 		if (cutback || cutoff || choke) x |= 1;
 		led = x;

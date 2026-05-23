@@ -53,7 +53,7 @@
 #define iotim_isr tim3_isr
 #endif
 #define IOTIM_DMA 1
-#define iodma_isr dma1_channel1_isr
+#define iotim_dma_isr dma1_channel1_isr
 
 #ifndef IO_AUX
 #elif IO_AUX == 0xB8

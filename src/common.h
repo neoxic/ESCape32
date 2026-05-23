@@ -110,20 +110,20 @@ typedef struct {
 	int Kp, Ki, Kd, Li, i, x;
 } PID;
 
-typedef void (*Func)(void);
-
 extern char _boot[], _cfg[], _cfg_start[], _cfg_end[], _rom[], _ram[], _eod[], _vec[]; // Linker exports
 extern const uint16_t sinedata[];
 extern const Cfg cfgdata;
 extern Cfg cfg;
 extern int throt, brake, ertm, erpm, temp1, temp2, volt, curr, csum, dshotval, beepval;
 extern char analog, telreq, telmode, flipdir, beacon, dshotext, auxup;
+extern uint32_t tick;
 
 void init(void);
 void initio(void);
 void initgpio(void);
 void initled(void);
 void inittelem(void);
+void sendtelem(void);
 int hallcode(void);
 void ledctl(int x);
 void hsictl(int x);
@@ -132,12 +132,12 @@ void io_serial(void);
 void io_analog(void);
 void adctrig(void);
 void adcdata(int t, int u, int v, int c, int a);
-void delay(int ms, Func f);
-void kisstelem(void);
-void autotelem(void);
+void delay(uint32_t x, void (*f)(void));
 int execcmd(char *str);
-char crc8(const char *buf, int len);
-char crc8dvbs2(const char *buf, int len);
+uint8_t crc8(const char *buf, int len);
+uint8_t crc8dvbs2(const char *buf, int len);
+uint16_t crc16ccitt(const char *buf, int len);
+uint16_t crc16xmodem(const char *buf, int len);
 int scale(int x, int a1, int a2, int b1, int b2);
 int smooth(int *s, int x, int n);
 void initpid(PID *pid, int x);

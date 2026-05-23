@@ -54,7 +54,7 @@
 #define COMP1_CSR MMIO32(COMP_BASE + 0x0)
 #define COMP2_CSR MMIO32(COMP_BASE + 0x4)
 
-static char len, ain;
+static uint8_t len, ain;
 static uint16_t buf[6];
 #ifdef LED_WS2812
 static uint16_t led[5];
