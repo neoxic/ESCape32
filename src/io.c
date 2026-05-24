@@ -43,7 +43,7 @@ static int (*iofunc)(int len);
 #endif
 static void (*ioirq)(void);
 static char dshotinv, iobuf[1024] __attribute__((aligned(2)));
-static uint16_t dshotarr1, dshotarr2, dshotbuf[23] = {-1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, -1, 0, -1, 0, -1, 0, -1, -1, -1};
+static uint16_t dshotarr1, dshotarr2;
 
 static void setthrot(int x) {
 	if (x < 0) return;
@@ -364,10 +364,14 @@ void iotim_dma_isr(void) { // DSHOT
 		int a = dshotval << 4 | dshotcrc(dshotval, 1);
 		int b = 0;
 		for (int i = 0, j = 0; i < 16; i += 4, j += 5) b |= gcr[a >> i & 0xf] << j;
+		uint16_t *buf = (uint16_t *)(iobuf + 64);
+		buf[0] = -1;
 		for (int p = -1, i = 19; i >= 0; --i) {
 			if (b >> i & 1) p = ~p;
-			dshotbuf[20 - i] = p;
+			buf[20 - i] = p;
 		}
+		buf[21] = 0;
+		buf[22] = 0;
 		if (!rep || !--rep) dshotval = 0;
 		return;
 	}
@@ -378,7 +382,7 @@ void iotim_dma_isr(void) { // DSHOT
 		TIM_CCMR1(IOTIM) = TIM_CCMR1_OC1PE | TIM_CCMR1_OC1M_PWM2;
 		TIM_CR2(IOTIM) = TIM_CR2_CCDS; // CC1 DMA request on UEV using the same DMA channel
 		DMA1_CCR(IOTIM_DMA) = 0;
-		DMA1_CMAR(IOTIM_DMA) = (uint32_t)dshotbuf;
+		DMA1_CMAR(IOTIM_DMA) = (uint32_t)(iobuf + 64);
 		DMA1_CNDTR(IOTIM_DMA) = 23;
 		DMA1_CCR(IOTIM_DMA) = DMA_CCR_EN | DMA_CCR_TCIE | DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_16BIT | DMA_CCR_MSIZE_16BIT;
 		TIM_CCR1(IOTIM) = 0; // Preload high level
