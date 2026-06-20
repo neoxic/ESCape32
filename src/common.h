@@ -92,6 +92,8 @@ typedef struct {
 	char telem_mode;
 	char telem_phid;
 	char telem_poles;
+	int16_t telem_volt;
+	int16_t telem_curr;
 	uint16_t prot_stall;
 	char prot_temp;
 	char prot_sens;

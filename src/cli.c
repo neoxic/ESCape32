@@ -51,18 +51,20 @@
 	XX(30, val, telem_mode) \
 	XX(31, val, telem_phid) \
 	XX(32, val, telem_poles) \
-	XX(33, val, prot_stall) \
-	XX(34, val, prot_temp) \
-	XX(35, val, prot_sens) \
-	XX(36, val, prot_volt) \
-	XX(37, val, prot_cells) \
-	XX(38, val, prot_curr) \
-	XX(39, val, prot_park) \
-	XX(40, str, music) \
-	XX(41, val, volume) \
-	XX(42, val, beacon) \
-	XX(43, val, bec) \
-	XX(44, val, led) \
+	XX(33, val, telem_volt) \
+	XX(34, val, telem_curr) \
+	XX(35, val, prot_stall) \
+	XX(36, val, prot_temp) \
+	XX(37, val, prot_sens) \
+	XX(38, val, prot_volt) \
+	XX(39, val, prot_cells) \
+	XX(40, val, prot_curr) \
+	XX(41, val, prot_park) \
+	XX(42, str, music) \
+	XX(43, val, volume) \
+	XX(44, val, beacon) \
+	XX(45, val, bec) \
+	XX(46, val, led) \
 
 static int beep = -1;
 

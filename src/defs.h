@@ -84,12 +84,6 @@
 #ifndef TEMP_SENS
 #define TEMP_SENS NTC10K3455UP2K
 #endif
-#ifndef VOLT_MUL
-#define VOLT_MUL 0 // %
-#endif
-#ifndef CURR_MUL
-#define CURR_MUL 0 // mA/mV
-#endif
 #ifndef SERIAL_BR
 #define SERIAL_BR 460800
 #endif
@@ -210,6 +204,12 @@
 #endif
 #ifndef TELEM_POLES
 #define TELEM_POLES 14
+#endif
+#ifndef TELEM_VOLT
+#define TELEM_VOLT 0
+#endif
+#ifndef TELEM_CURR
+#define TELEM_CURR 0
 #endif
 #ifndef PROT_STALL
 #define PROT_STALL 0
