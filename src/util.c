@@ -454,6 +454,12 @@ void checkcfg(void) {
 	cfg.analog_max = clamp(cfg.analog_max, cfg.analog_min + 200, 3400);
 #ifdef IO_PA2
 	cfg.input_mode = clamp(cfg.input_mode, 0, 7);
+#ifdef DISABLE_EXBUS
+	if (cfg.input_mode == 6) cfg.input_mode = 0;
+#endif
+#ifdef DISABLE_HOTT
+	if (cfg.input_mode == 7) cfg.input_mode = 0;
+#endif
 	cfg.input_ch1 = clamp(cfg.input_ch1, 1, cfg.input_mode < 3 ? 0 : 32);
 	cfg.input_ch2 = clamp(cfg.input_ch2, 0, cfg.input_mode < 3 ? 0 : 32);
 #else
@@ -466,10 +472,17 @@ void checkcfg(void) {
 	cfg.input_ch2 = 0;
 #endif
 	cfg.telem_mode = clamp(cfg.telem_mode, 0, 6);
+#ifdef DISABLE_MSB
+	if (cfg.telem_mode == 5) cfg.telem_mode = 0;
+#endif
+#ifdef DISABLE_HOTT
+	if (cfg.telem_mode == 6) cfg.telem_mode = 0;
+#endif
 	cfg.telem_phid =
 		cfg.telem_mode == 2 ||
 		cfg.telem_mode == 5 ? clamp(cfg.telem_phid, 1, 2):
 		cfg.telem_mode == 3 ? clamp(cfg.telem_phid, 1, 28):
+		cfg.telem_mode == 4 ? clamp(cfg.telem_phid, 1, 8):
 		cfg.input_mode == 4 ? clamp(cfg.telem_phid, 0, 4) : 0;
 	cfg.telem_poles = clamp(cfg.telem_poles & ~1, 2, 100);
 #if SENS_CNT >= 1
@@ -558,10 +571,12 @@ int savecfg(void) {
 }
 
 int resetcfg(void) {
+	if (ertm || busy) return 0;
 	__disable_irq();
 	memcpy(&cfg, &cfgdata, sizeof cfgdata);
 	__enable_irq();
 	checkcfg();
+	rearm = 1; // Ensure safe throttle mode change
 	return savecfg();
 }
 

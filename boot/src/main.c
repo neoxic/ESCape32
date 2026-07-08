@@ -98,9 +98,12 @@ void main(void) {
 			default: // Pass control to application
 			done:
 				if (*(uint16_t *)_rom_end != 0x32ea) break;
-				__asm__("msr msp, %0" :: "g" (*(uint32_t *)(_rom_end + PAGE_SIZE))); // Initialize stack pointer
-				(*(void (**)(void))(_rom_end + PAGE_SIZE + 4))(); // Jump to application
-				for (;;); // Never return
+				const uint32_t *vec = (const uint32_t *)(_rom_end + PAGE_SIZE); // Entry point
+				__asm__ volatile (
+					"msr msp, %0\n\t" // Initialize stack pointer
+					"bx %1\n\t" // Jump to application
+					:: "r" (vec[0]), "r" (vec[1]) : "memory");
+				__builtin_unreachable();
 		}
 	}
 }
