@@ -334,8 +334,8 @@ error:
 	appendint(&pos, cfg.key, len); \
 
 static void processcrsfcmd(char **pos, const char *name, const char *buf, int len, char *res, int (*func)(void), const char *msg) {
-	int val = 0;
 	const char *str = "";
+	int val = 0;
 	if (res) {
 		res[0] = 0x2b;
 		res[4] = 0;
@@ -344,8 +344,8 @@ static void processcrsfcmd(char **pos, const char *name, const char *buf, int le
 		switch (getint(buf, len)) {
 			case 1:
 				if (msg) {
-					val = 3;
 					str = msg;
+					val = 3;
 					break;
 				} // Fall through
 			case 4:
@@ -369,7 +369,7 @@ int execcrsfcmd(const char *buf, int len, char *res) {
 	char *pos = res;
 	switch (buf[0]) {
 		case 0x28: // Ping
-			if (len != 3) break;
+			if (len < 3) break;
 			res[0] = 0x29;
 			pos += 3;
 			appendstr(&pos, "ESCape32 ID:");
@@ -380,7 +380,7 @@ int execcrsfcmd(const char *buf, int len, char *res) {
 			pos += 15;
 			break;
 		case 0x2c: // Read
-			if (len != 5) break;
+			if (len < 5) break;
 			res[0] = 0x2b;
 			res[5] = 0;
 			pos += 6;

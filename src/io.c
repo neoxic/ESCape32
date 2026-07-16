@@ -407,8 +407,7 @@ void iotim_dma_isr(void) { // DSHOT
 			dshotresync();
 			return;
 		}
-		x <<= 1;
-		if (buf[i + 1] >= z) x |= 1;
+		x = x << 1 | (buf[i + 1] >= z);
 	}
 	if (dshotcrc(x, dshotinv)) { // Invalid checksum
 		dshotresync();
