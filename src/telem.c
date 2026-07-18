@@ -317,15 +317,15 @@ static void sendcrsf(void) {
 			a = 6;
 			break;
 		case 1: // Battery or voltage
-			if (telphid > 1) {
-				a = min(volt * 10, 0xffff);
-				buf[2] = 0x0e;
-				buf[3] = 0x80 + telphid - 2;
-				buf[4] = a >> 8;
-				buf[5] = a;
-				a = 4;
-				break;
-			}
+			// if (telphid > 1) {
+			// 	a = min(volt * 10, 0xffff);
+			// 	buf[2] = 0x0e;
+			// 	buf[3] = 0x80 + telphid - 2;
+			// 	buf[4] = a >> 8;
+			// 	buf[5] = a;
+			// 	a = 4;
+			// 	break;
+			// }
 			a = volt * 205 >> 11;
 			b = curr * 205 >> 11;
 			buf[2] = 0x08;
@@ -337,7 +337,11 @@ static void sendcrsf(void) {
 			buf[8] = csum >> 8;
 			buf[9] = csum;
 			buf[10] = 0;
-			a = 9;
+            a = 9;
+            if (telphid > 0) {
+                buf[11] = telphid;
+                a = 10; 
+            }
 			break;
 		case 2: // RPM
 			a = erpm / (cfg.telem_poles >> 1);
