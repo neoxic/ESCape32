@@ -258,8 +258,8 @@ static int hottfunc(int len) {
 	iobuf[7] = a >> 8;
 	iobuf[8] = v = min(v, a);
 	iobuf[9] = v >> 8;
-	iobuf[10] = csum;
-	iobuf[11] = csum >> 8;
+	iobuf[10] = a = csum * 205 >> 11;
+	iobuf[11] = a >> 8;
 	iobuf[12] = a = temp1 + 20;
 	iobuf[13] = t = max(t, a);
 	iobuf[14] = a = curr * 205 >> 11;
